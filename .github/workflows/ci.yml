@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (nim ${{ matrix.nim }}, ${{ matrix.mm }}, threads=${{ matrix.threads }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Official Nim image pinned by version: no third-party actions.
+    container: nimlang/nim:${{ matrix.nim }}
+    strategy:
+      fail-fast: false
+      matrix:
+        nim: ['2.2.4']
+        mm: [orc, arc]
+        threads: ['on', 'off']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Allow git in the container workspace (nimble reads the revision)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Tests (release)
+        run: nimble test -y --mm:${{ matrix.mm }} --threads:${{ matrix.threads }} -d:release
+
+      - name: Tests (debug, with runtime checks)
+        run: nimble test -y --mm:${{ matrix.mm }} --threads:${{ matrix.threads }}
+
+  examples-and-docs:
+    name: examples and docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build all examples
+        run: |
+          for f in examples/*.nim; do
+            [ -e "$f" ] || continue
+            nim c --mm:orc -d:release -o:/tmp/example_bin "$f"
+          done
+
+      - name: Generate API documentation
+        run: nim doc --project --outdir:/tmp/htmldocs src/circuit_breaker.nim
+
+      - name: Traceability matrix (EV1/EV2)
+        run: nim r --hints:off scripts/check_traceability.nim

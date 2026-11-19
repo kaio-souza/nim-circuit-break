@@ -1,0 +1,33 @@
+# Compiled binaries (no extension) in examples, tests and benchmarks.
+# The "!" patterns re-include sources and configs that belong in the repository.
+examples/*
+!examples/*.nim
+!examples/*.nims
+!examples/*.md
+tests/*
+!tests/*.nim
+!tests/*.nims
+!tests/compile_fail/
+tests/compile_fail/cache/
+benchmarks/*
+!benchmarks/*.nim
+!benchmarks/baseline/
+!benchmarks/results/
+benchmarks/results/current_*.json
+
+# Compiler artifacts
+nimcache/
+htmldocs/
+*.exe
+*.o
+*.gcda
+*.gcno
+coverage*.info
+
+# Internal research material (not part of the library)
+reports/
+research_notes/
+
+# Editor
+.idea/
+.vscode/

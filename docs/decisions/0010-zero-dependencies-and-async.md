@@ -17,7 +17,7 @@ An infrastructure library ends up in many projects; every transitive dependency 
 ## Consequences
 
 - `nimble install` downloads nothing but the package.
-- `Future` cancellation (Y3) and per-call timeouts (T5) are planned for v0.4, together with Chronos.
+- `Future` cancellation (Y3) and per-call timeouts (T5) were planned together with Chronos; delivered by [ADR-0016](0016-chronos-cancellation-and-timeouts.md).
 
 ## Evidence
 

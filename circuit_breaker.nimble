@@ -14,6 +14,10 @@ requires "nim >= 2.2.4"
 
 # Test-only: the model test (V2/Q5) uses proptest's stateful testing.
 taskRequires "test", "https://github.com/kaio-souza/nim-proptest >= 0.2.0"
+# Test and benchmark only: the optional Chronos module (Y2) is not a dependency
+# of the package; programs that import it install Chronos themselves.
+taskRequires "test", "chronos >= 4.0.0"
+taskRequires "bench", "chronos >= 4.0.0"
 
 # Tasks
 
@@ -21,7 +25,7 @@ const benchFlags = "nim c -r -d:release --opt:speed --threads:on --hints:off --w
 
 task bench, "Run the benchmark suite (BM1-BM9)":
   # Timings with ORC (the default memory manager).
-  for f in ["b_core", "b_window", "b_threads", "b_keyed"]:
+  for f in ["b_core", "b_window", "b_threads", "b_keyed", "b_async", "b_chronos"]:
     exec benchFlags & "--mm:orc benchmarks/" & f & ".nim"
   # Allocation counts with ARC: -d:nimAllocStats crashes ORC on re-raise in
   # Nim 2.2.4 (docs/upstream/repro_orc_allocstats.nim). Same allocations.

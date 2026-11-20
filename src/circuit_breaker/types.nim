@@ -85,6 +85,12 @@ type
     state*: CircuitState
     retryAfter*: Duration  ## Time until the next probe is allowed (zero if unknown).
 
+  CallTimeoutError* = object of CatchableError
+    ## Raised by the async APIs when a call exceeds `callTimeout` (T5). The
+    ## call counts as a failure.
+    breakerName*: string
+    timeout*: Duration
+
   Clock* = proc(): int64 {.gcsafe, raises: [].}
     ## Monotonic time source in nanoseconds.
   ErrorClassifier* = proc(e: ref CatchableError): Verdict
@@ -110,6 +116,8 @@ type
     windowDuration*: Duration
     windowBuckets*: int
     slowCallDuration*: Duration       ## Zero disables slow call detection.
+    callTimeout*: Duration            ## T5: per-call limit for the async APIs; zero disables it.
+                                      ## Sync calls cannot be interrupted and ignore it.
     slowCallRateThreshold*: float
     openTimeout*: Duration
     backoffMultiplier*: float         ## 1.0 disables backoff.
@@ -170,6 +178,7 @@ proc initBreakerConfig*(
     windowDuration = initDuration(seconds = 60),
     windowBuckets = 10,
     slowCallDuration = Duration(),
+    callTimeout = Duration(),
     slowCallRateThreshold = 1.0,
     openTimeout = initDuration(seconds = 30),
     backoffMultiplier = 1.0,
@@ -192,6 +201,7 @@ proc initBreakerConfig*(
     failureRateThreshold: failureRateThreshold, minimumCalls: minimumCalls,
     windowKind: windowKind, windowSize: windowSize, windowDuration: windowDuration,
     windowBuckets: windowBuckets, slowCallDuration: slowCallDuration,
+    callTimeout: callTimeout,
     slowCallRateThreshold: slowCallRateThreshold, openTimeout: openTimeout,
     backoffMultiplier: backoffMultiplier, maxOpenTimeout: maxOpenTimeout,
     jitter: jitter, halfOpenMaxProbes: halfOpenMaxProbes,
@@ -213,6 +223,7 @@ proc validate*(c: BreakerConfig) {.raises: [ValueError].} =
   req c.windowDuration.inNanoseconds >= c.windowBuckets,
     "windowDuration must be at least windowBuckets nanoseconds"
   req c.slowCallDuration.inNanoseconds >= 0, "slowCallDuration must be >= 0"
+  req c.callTimeout.inNanoseconds >= 0, "callTimeout must be >= 0"
   req c.slowCallRateThreshold > 0.0 and c.slowCallRateThreshold <= 1.0,
     "slowCallRateThreshold must be in (0, 1]"
   req c.openTimeout.inNanoseconds > 0, "openTimeout must be > 0"

@@ -6,7 +6,7 @@ Legend: [x] done · [ ] pending · [~] deferred
 
 ## Where we are
 
-**v0.3.0 is released** (tag `v0.3.0`). v0.2.0 was the full rewrite of v0.1; v0.3.0 adds observability (latency percentiles, Prometheus, logging), the model test, a correctness fix for `FailureRate`, and performance work on rejections and multi-threaded use. Next: v0.4.
+**v0.3.0 is released** (tag `v0.3.0`). v0.2.0 was the full rewrite of v0.1; v0.3.0 adds observability (latency percentiles, Prometheus, logging), the model test, a correctness fix for `FailureRate`, and performance work on rejections and multi-threaded use. Next: the work toward v1.0 below; releases are cut for large sets of changes, not per phase.
 
 | Indicator | Value |
 |---|---|
@@ -77,9 +77,9 @@ Legend: [x] done · [ ] pending · [~] deferred
 - [x] I1: composition guide with retry, backoff, bulkhead and timeout (`docs/COMPOSITION.md`, `examples/composition.nim`)
 - [~] Report the ORC + `-d:nimAllocStats` crash upstream: reproduced on Nim 2.2.4, issue drafted in [`upstream/ISSUE-orc-allocstats.md`](upstream/ISSUE-orc-allocstats.md), not yet filed (waiting for review)
 
-## v0.4: async, documentation and platforms
+## Toward v1.0: async, documentation and platforms
 
-Detailed plan, audit of gaps and open decisions: [`PLAN-v0.4.md`](PLAN-v0.4.md).
+Detailed plan, audit of gaps and open decisions: [`PLAN.md`](PLAN.md). The phases organize the work; they are not releases.
 
 Phase A, documentation debt:
 - [x] Matrix rows for D1–D8; `check_traceability` fails when a SPEC ID has no row
@@ -87,9 +87,9 @@ Phase A, documentation debt:
 - [x] README updated for v0.3 (features, transition table, performance per SPEC 27.3 with the lowest of 8 runs, quality; ThreadSanitizer re-run on v0.3.0)
 
 Phase B, async:
-- [ ] Y2: Chronos support in a separate module (closes A5)
-- [ ] Y3: safety under `Future` cancellation
-- [ ] T5: per-call timeout for the async APIs (depends on Y3)
+- [x] Y2: Chronos support in a separate module (closes A5), [ADR-0016](decisions/0016-chronos-cancellation-and-timeouts.md)
+- [x] Y3: safety under `Future` cancellation (Chronos; not counted by default)
+- [x] T5: per-call timeout for the async APIs (`callTimeout`); finished calls arm no timer
 
 Phase C, CI and evidence:
 - [ ] Q6: CI on macOS and Windows, Nim `devel`

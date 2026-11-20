@@ -43,8 +43,12 @@ Failures of your function propagate unchanged; a rejected call raises
 - **Safe adoption**: shadow mode evaluates everything but never rejects;
   `diagnose()` warns about risky configs; `reconfigure()` at runtime;
   `-d:cbDisabled` turns every breaker into a zero-cost pass-through.
-- **Async and keyed**: `callAsync` for `std/asyncdispatch`; one breaker per
-  key (host, endpoint, tenant) with a capacity limit and LRU eviction.
+- **Async and keyed**: `callAsync` for `std/asyncdispatch` and for Chronos
+  (`circuit_breaker/chronos_async`, Chronos installed by you); with Chronos a
+  cancelled call never leaves the breaker stuck and is not counted by default;
+  `callTimeout` limits each async call and counts expiry as a failure. One
+  breaker per key (host, endpoint, tenant) with a capacity limit and LRU
+  eviction.
 - **Testing helpers**: `FakeClock` lets you test time-based behavior without
   `sleep`.
 
@@ -190,7 +194,7 @@ Shared breaker, `call` in Closed, wall time per operation across all threads
 - [Design decisions](docs/decisions/README.md): one ADR per technical choice.
 - [Specification](docs/SPEC.md): every requirement with its ID.
 - [Composition](docs/COMPOSITION.md): retry, backoff, bulkhead and timeout around a breaker.
-- [Plan for v0.4](docs/PLAN-v0.4.md): the work left before v1.0.
+- [Plan to v1.0](docs/PLAN.md): the work left before v1.0.
 - [Changelog](CHANGELOG.md).
 
 ## Installation

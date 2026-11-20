@@ -14,12 +14,13 @@ src/
     core.nim                   # state machine, Permit, call/tryCall/callOr/withBreaker, control and inspection
     prometheus.nim             # renderPrometheus: text exposition (O6/B3), explicit import
     logs.nim                   # withTransitionLog: std/logging hook (O7), explicit import
-    async.nim                  # callAsync (std/asyncdispatch), explicit import
+    async.nim                  # callAsync (std/asyncdispatch) with callTimeout, explicit import
+    chronos_async.nim          # callAsync for Chronos: cancellation (Y3) and callTimeout (T5); needs Chronos
     keyed.nim                  # KeyedBreaker[K]: one breaker per key with LRU, explicit import
     testing.nim                # FakeClock, explicit import
 ```
 
-Module dependencies: `types` ← (`window`, `latency`) ← `core` ← (`async`, `keyed`, `prometheus`). `logs` and `testing` depend only on `types`. The core never imports the optional modules (checked by a test in `t_prometheus`). No dependency outside the standard library ([ADR-0010](decisions/0010-zero-dependencies-and-async.md)).
+Module dependencies: `types` ← (`window`, `latency`) ← `core` ← (`async`, `chronos_async`, `keyed`, `prometheus`). `logs` and `testing` depend only on `types`. The core never imports the optional modules (checked by a test in `t_prometheus`). No dependency outside the standard library ([ADR-0010](decisions/0010-zero-dependencies-and-async.md)), except Chronos for `chronos_async`, which is not a package dependency ([ADR-0016](decisions/0016-chronos-cancellation-and-timeouts.md)).
 
 ## Call flow
 
@@ -87,7 +88,8 @@ tests/
   t_api.nim              # A*, E*, O*, B*, K*, N1, N4, N8–N10, V1
   t_values.nim           # value tests (problem without the feature × fix with it)
   t_concurrency.nim      # 8-thread stress (V3, S7, C1–C3)
-  t_async.nim            # Y1
+  t_async.nim            # Y1, T5
+  t_chronos.nim          # Y2, Y3, T5 (needs Chronos)
   t_keyed.nim            # N2
   t_model.nim            # V2/Q5: model test with proptest (1000 random sequences)
   t_latency.nim          # O4
@@ -103,6 +105,8 @@ benchmarks/
   b_window.nim           # BM5
   b_threads.nim          # BM2
   b_keyed.nim            # BM7
+  b_async.nim            # BM13: callAsync on asyncdispatch
+  b_chronos.nim          # BM14: callAsync on Chronos
 scripts/
   check_traceability.nim # validates docs/TRACEABILITY.md against SPEC, tests and benchmarks
   check_docs.nim         # every exported symbol has a doc comment (D3)

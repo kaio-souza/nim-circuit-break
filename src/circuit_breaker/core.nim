@@ -713,6 +713,21 @@ proc latencyQuantile*(m: BreakerMetrics; p: float): Duration =
   ## O4: the `p`-quantile of the call latency (0 < p <= 1), within 1/k relative
   ## error, where k is `latencyPrecision`. Zero when tracking is off or empty.
   initDuration(nanoseconds = latencyPercentile(m.latencyBuckets, m.latencyPrecision, p))
+proc callTimeout*(cb: CircuitBreaker): Duration =
+  ## T5: the per-call limit applied by the async APIs (zero: none). Read under
+  ## the lock, since `reconfigure` may change it.
+  let b = addr cb[]
+  locked(b):
+    result = b.cfg.callTimeout
+
+proc newCallTimeoutError*(cb: CircuitBreaker; timeout: Duration): ref CallTimeoutError =
+  ## The error raised by the async APIs when `timeout` is exceeded.
+  result = newException(CallTimeoutError,
+    "circuit breaker '" & cb.name & "': call exceeded " &
+    $timeout.inMilliseconds & " ms")
+  result.breakerName = cb.name
+  result.timeout = timeout
+
 proc retryAfter*(cb: CircuitBreaker): Duration =
   ## Time until the next probe while `Open`; zero in the other states.
   cb.metrics.retryAfter
@@ -766,6 +781,7 @@ proc reconfigure*(cb: CircuitBreaker; cfg: BreakerConfig) =
     b.cfg.windowDuration = cfg.windowDuration
     b.cfg.windowBuckets = cfg.windowBuckets
     b.cfg.slowCallDuration = cfg.slowCallDuration
+    b.cfg.callTimeout = cfg.callTimeout
     b.cfg.slowCallRateThreshold = cfg.slowCallRateThreshold
     b.cfg.openTimeout = cfg.openTimeout
     b.cfg.backoffMultiplier = cfg.backoffMultiplier

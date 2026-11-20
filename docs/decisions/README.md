@@ -19,6 +19,7 @@ Each file records one decision: its context, what was decided, the consequences,
 | [0013](0013-benchmark-methodology.md) | Own harness; allocations measured with ARC; informational benchmarks in CI | Accepted |
 | [0014](0014-continuous-integration.md) | CI on the official Nim image, no third-party actions | Accepted |
 | [0015](0015-lean-locked-path-for-windowed-policies.md) | Lock-free success for the consecutive policy; lean locked path for windowed policies (P2 scope) | Accepted |
+| [0016](0016-chronos-cancellation-and-timeouts.md) | Chronos module; cancellations not counted by default; `callTimeout` for the async APIs | Accepted |
 
 ## Template
 

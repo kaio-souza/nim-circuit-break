@@ -2,6 +2,18 @@
 
 All notable changes. Versions follow semantic versioning.
 
+## Unreleased
+
+### Added
+- Y2: Chronos support in `circuit_breaker/chronos_async` (Chronos is not a
+  package dependency; install it to use the module).
+- Y3: with Chronos, cancelling a call cancels `fn`, frees a probe slot and is
+  not counted by default (`onCancel`).
+- T5: `callTimeout` for the async APIs; expiry counts as a failure and raises
+  `CallTimeoutError`.
+- D2: transition table in the README. D3: every exported symbol documented,
+  checked in CI.
+
 ## 0.3.0 - 2026-11-20
 
 ### Fixed

@@ -1,8 +1,12 @@
-# Plan for v0.4
+# Plan to v1.0
 
 Written 2026-11-20, after the v0.3.0 release. Goal: close every gap between
 the current state and the v1.0 acceptance criteria ([SPEC §13](SPEC.md)), so
 that v1.0 only needs the final evidence runs and the publication.
+
+The phases organize the work; they are not releases. Releases are cut when a
+large set of changes is ready, not per phase; the version number is chosen at
+release time.
 
 Every feature follows the Definition of Done ([SPEC §29](SPEC.md)): documented
 public API, unit tests with edge cases, a value test, a benchmark with a
@@ -129,13 +133,13 @@ examples of E; D needs the CI work of C.
 4. **I4/D8:** `docs/EQUIVALENCE.md`: concept and parameter mapping for the
    libraries of D-6, including what has no equivalent.
 
-### Also in v0.4
+### Also before v1.0
 
 - **P7:** refresh the evidence with the v0.3 numbers (28 to 37 ns minimum on
   the development machine) and mark it done if it holds on the README machine.
 - Keep the Post-1.0 list unchanged (Y4, N12, B5 and the rest).
 
-## 4. Exit criteria for v0.4
+## 4. Exit criteria
 
 - Every P0 and P1 requirement done, or amended by an accepted ADR (D-1).
 - Matrix covers every SPEC ID, checked in CI.

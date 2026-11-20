@@ -28,3 +28,46 @@ suite "async":
     check cb.state == Open
     expect CircuitOpenError:
       discard waitFor cb.callAsync(okOp)
+
+proc slowOp(): Future[int] {.async.} =
+  await sleepAsync(200)
+  return 7
+
+suite "async per-call timeout (T5)":
+  test "T5: exceeding callTimeout raises CallTimeoutError and counts a failure":
+    let cb = newCircuitBreaker(initBreakerConfig(name = "slow", failureThreshold = 5,
+      callTimeout = ms(20)))
+    expect CallTimeoutError:
+      discard waitFor cb.callAsync(slowOp)
+    check cb.metrics.failures == 1
+    check cb.metrics.successes == 0
+    # the abandoned call finishes later; its outcome must not be recorded
+    waitFor sleepAsync(250)
+    check cb.metrics.successes == 0
+    check cb.metrics.failures == 1
+
+  test "T5: a call within callTimeout is unaffected":
+    let cb = newCircuitBreaker(initBreakerConfig(name = "fast", callTimeout = ms(500)))
+    check waitFor(cb.callAsync(okOp)) == 42
+    check cb.metrics.successes == 1
+
+  test "T5: callTimeout is validated and changed by reconfigure":
+    expect ValueError:
+      discard newCircuitBreaker(initBreakerConfig(callTimeout = ms(-1)))
+    let cb = newCircuitBreaker(initBreakerConfig(callTimeout = ms(10)))
+    cb.reconfigure(initBreakerConfig(callTimeout = ms(30)))
+    check cb.callTimeout == ms(30)
+
+  test "T5: a CallTimeoutError from a nested breaker is classified by the outer one":
+    # The inner breaker times out; the outer one must treat that error like any
+    # other failure of its `fn`: through its classifier, here "ignore".
+    let inner = newCircuitBreaker(initBreakerConfig(name = "inner", callTimeout = ms(20)))
+    let outer = newCircuitBreaker(initBreakerConfig(name = "outer",
+      classifyError = proc(e: ref CatchableError): Verdict =
+        if e of CallTimeoutError: ignoreCall() else: countAsFailure()))
+    proc viaInner(): Future[int] = inner.callAsync(slowOp)
+    expect CallTimeoutError:
+      discard waitFor outer.callAsync(viaInner)
+    check inner.metrics.failures == 1
+    check outer.metrics.failures == 0
+    check outer.metrics.successes == 0

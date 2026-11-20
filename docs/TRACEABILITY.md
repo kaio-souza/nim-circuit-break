@@ -31,13 +31,13 @@ Script rules:
 | T2 | Open period starts at the end of the call | done | t_transitions | n/a | |
 | T3 | Exponential backoff | done | t_transitions | n/a | |
 | T4 | Jitter | done | t_transitions, t_values | n/a | only delays, never earlier |
-| T5 | Per-call timeout | deferred | | | needs cancellation (Y3) |
+| T5 | Per-call timeout | done | t_async, t_chronos | BM13 | `callTimeout`, async APIs only (sync calls cannot be interrupted); ADR-0016 |
 | T6 | Injectable clock | done | t_api | n/a | `FakeClock` |
 | A1 | Open vs. failure distinguished | done | t_api | n/a | |
 | A2 | Original exception propagated | done | t_api | n/a | |
 | A3 | `CircuitOpenError` and `tryCall` | done | t_api | BM3 | |
 | A4 | `void` support | done | t_api | n/a | |
-| A5 | Sync and async | partial | t_async | n/a | `asyncdispatch` yes; Chronos deferred (Y2) |
+| A5 | Sync and async | done | t_async, t_chronos | BM14 | `asyncdispatch` and Chronos |
 | A6 | `callOr` fallback | done | t_api | n/a | |
 | A7 | Template without closure | done | t_api | BM6 | `withBreaker` (= E3) |
 | A8 | Validated config | done | t_api | n/a | |
@@ -80,14 +80,14 @@ Script rules:
 | Q6 | Multi-platform CI | partial | CI | n/a | Linux only for now (SPEC 27.5) |
 | Q7 | Coverage | deferred | | | |
 | Q8 | Examples compiled in CI | done | CI | n/a | |
-| D1 | README in one language, quickstart via `nimble install` | partial | CI | n/a | README in English; quickstart not yet built in CI after `nimble install` (v0.4 phase C) |
+| D1 | README in one language, quickstart via `nimble install` | partial | CI | n/a | README in English; quickstart not yet built in CI after `nimble install` (plan phase C) |
 | D2 | State diagram and transition table | done | CI | n/a | README "States": diagram and transition table; SPEC §12 |
 | D3 | Doc comments on the public API, published `nim doc` | partial | CI | n/a | 97 of 97 exported symbols documented, checked by `scripts/check_docs.nim` in CI; not yet published (Pages, D-4) |
-| D4 | Parameter guide and pitfalls | pending | | | v0.4 phase E |
-| D5 | Examples: HTTP, database, async, fallback, metrics | partial | CI | n/a | HTTP, async, composition compiled in CI; database, metrics, fallback missing (v0.4 phase E) |
+| D4 | Parameter guide and pitfalls | pending | | | plan phase E |
+| D5 | Examples: HTTP, database, async, fallback, metrics | partial | CI | n/a | HTTP, async, composition compiled in CI; database, metrics, fallback missing (plan phase E) |
 | D6 | CHANGELOG and semantic versioning | done | CI | n/a | `CHANGELOG.md`; tags v0.2.0, v0.3.0 |
 | D7 | LICENSE, `.gitignore`, git repository | done | CI | n/a | `LICENSE` (MIT), `.gitignore` excludes binaries |
-| D8 | Concept and parameter mapping to other languages | pending | | | = I4, v0.4 phase E |
+| D8 | Concept and parameter mapping to other languages | pending | | | = I4, plan phase E |
 | E1 | `call`/`tryCall`/`callOr` | done | t_api | BM1 | |
 | E2 | RAII guard | done | t_api, t_values | BM6 | |
 | E3 | `withBreaker` | done | t_api | BM6 | |
@@ -115,8 +115,8 @@ Script rules:
 | R3 | Atomics and padding | done | CI | BM2 | atomics and padding (P5) |
 | R4 | Regression gate | deferred | | | SPEC 27.4 |
 | Y1 | `callAsync` (asyncdispatch) | done | t_async | n/a | |
-| Y2 | Chronos | deferred | | | |
-| Y3 | Cancellation | deferred | | | |
+| Y2 | Chronos | done | t_chronos | BM14 | `circuit_breaker/chronos_async`; Chronos not a package dependency (ADR-0016) |
+| Y3 | Cancellation | done | t_chronos | BM14 | Chronos; not counted by default (`onCancel`); `asyncdispatch` has no cancellation |
 | Y4 | JS target | deferred | | | |
 | I1 | Composition guide | done | CI | n/a | `docs/COMPOSITION.md`; `examples/composition.nim` compiled in CI (Q8) |
 | I2 | HTTP/web adapters | deferred | | | |

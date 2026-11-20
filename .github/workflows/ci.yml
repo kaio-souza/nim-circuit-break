@@ -45,6 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Chronos (optional module, examples and docs check)
+        run: nimble install -y chronos
+
       - name: Build all examples
         run: |
           for f in examples/*.nim; do

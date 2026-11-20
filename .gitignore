@@ -31,3 +31,9 @@ research_notes/
 # Editor
 .idea/
 .vscode/
+
+# proptest run seeds and local files (model test)
+.proptest/
+
+# Proptest run state (seed and last command), local only.
+.proptest/

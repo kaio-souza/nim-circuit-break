@@ -5,7 +5,7 @@ name: Benchmarks
 # (base and PR measured in the same job). See docs/decisions/0013.
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:

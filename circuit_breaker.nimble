@@ -12,6 +12,9 @@ skipDirs      = @["tests", "benchmarks", "examples", "scripts", "docs"]
 
 requires "nim >= 2.2.4"
 
+# Test-only: the model test (V2/Q5) uses proptest's stateful testing.
+taskRequires "test", "https://github.com/kaio-souza/nim-proptest >= 0.2.0"
+
 # Tasks
 
 const benchFlags = "nim c -r -d:release --opt:speed --threads:on --hints:off --warnings:off "

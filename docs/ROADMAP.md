@@ -56,16 +56,16 @@ Legend: [x] done · [ ] pending · [~] deferred
 
 ## Publishing v0.2.0 (next step)
 
-- [ ] Rename the local branch to `main` (workflows trigger on `main`)
+- [x] Workflows trigger on `master`, the local branch (the rename to `main` is no longer needed)
 - [ ] First commit and push to GitHub
 - [ ] First real CI run (validates the `nimlang/nim:2.2.4` image and `nimble test` with a commit)
-- [ ] Replace `<repository-url>` in the README with the real URL
+- [x] Replace `<repository-url>` in the README with the real URL
 - [ ] Tag `v0.2.0` and date it in the CHANGELOG
 - [ ] Publish to the `nim-lang/packages` index (name `circuit_breaker`, tags in `packages.json`)
 
 ## v0.3: close performance and proof gaps
 
-- [ ] V2/Q5: model test (random sequences compared against a reference model)
+- [x] V2/Q5: model test (random sequences compared against a reference model), `tests/t_model.nim` with proptest stateful testing
 - [ ] P2: make success recording lock-free with the `FailureRate` policy too
 - [ ] BM3: lock-free rejection in `Open` (63 ns today, more expensive than a success; the spec wants the opposite)
 - [ ] P5/R3: padding against false sharing on atomic counters

@@ -76,7 +76,7 @@ Script rules:
 | Q2 | Deterministic tests | done | CI | n/a | via V1 |
 | Q3 | Edge cases | done | CI | n/a | |
 | Q4 | Concurrency tests | done | CI | n/a | via V3 |
-| Q5 | Model test | pending | | | see V2 |
+| Q5 | Model test | done | t_model | n/a | see V2 |
 | Q6 | Multi-platform CI | partial | CI | n/a | Linux only for now (SPEC 27.5) |
 | Q7 | Coverage | deferred | | | |
 | Q8 | Examples compiled in CI | done | CI | n/a | |
@@ -86,7 +86,7 @@ Script rules:
 | E4 | Low-level API on the same core | done | t_api | BM6 | `tryAcquire` |
 | E5 | `retryAfter` | done | t_api | n/a | |
 | V1 | Public `FakeClock` | done | t_api | n/a | |
-| V2 | Model test | pending | | | |
+| V2 | Model test | done | t_model | n/a | proptest `stateMachine`; 1000 sequences, planted model mistakes found |
 | V3 | Multi-thread stress | done | t_concurrency | n/a | also under ThreadSanitizer |
 | V4 | Fuzzing | deferred | | | |
 | V5 | Quality section in README | done | CI | n/a | |

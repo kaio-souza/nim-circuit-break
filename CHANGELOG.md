@@ -2,6 +2,31 @@
 
 All notable changes. Versions follow semantic versioning.
 
+## Unreleased
+
+### Fixed
+- A success that tripped the `FailureRate` policy on a count window, with no
+  slow-call detection and no `onCall` callback, computed the open deadline from
+  time 0. The open period was already over, so the next call became a probe at
+  once. Probe successes closing the circuit also recorded a zero timestamp.
+  Both now read the clock when a transition happens.
+
+### Added
+- O4: latency percentiles, opt-in with `latencyPrecision` (log-bucket
+  histogram, `latencyQuantile`).
+- O6/B3: Prometheus text exposition in `circuit_breaker/prometheus`.
+- O7: transition logging with `std/logging` in `circuit_breaker/logs`.
+- I1: composition guide (`docs/COMPOSITION.md`, `examples/composition.nim`).
+
+### Performance
+- Rejections take no lock: about 22 ns in `ForcedOpen` (was 53) and about
+  31 ns in `Open`, below the cost of a success.
+- Successes with a sliding window and no callbacks take a leaner locked path
+  (`FailureRate` about 56 to 45 ns in isolation).
+- Hot counters on separate cache lines: 31 to 45% less per call with 2 to 8
+  threads sharing a breaker.
+- Latency samples are recorded without the lock.
+
 ## 0.2.0 - 2026-11-20
 
 Rewrite of the library. The 0.1 API (`call` returning `Option[T]`, public

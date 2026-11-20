@@ -8,7 +8,7 @@
 ## code keep it in a global or another long-lived owner.
 
 import std/[times, monotimes, atomics, random, locks, math, strutils, strformat]
-import types, window
+import types, window, latency
 
 export types
 
@@ -16,23 +16,42 @@ const threadsOn = compileOption("threads")
 
 type
   CircuitBreakerObj = object
+    # P5/R3: fields are grouped by how threads touch them, and each group that
+    # every call writes sits on its own cache line (64-byte pads; the heap
+    # only guarantees 16-byte alignment, so a full line of padding is what
+    # keeps two groups apart). Measured with BM2 at 2, 4 and 8 threads: 30 to
+    # 36% lower cost per call than with the counters next to the state.
+    #
+    # Read by every call, written only on transitions or reconfiguration:
     packed: Atomic[int]       # (generation shl 3) or ord(state)
     needsStart: Atomic[bool]  # whether permits must read the clock on grant
     fastSuccess: Atomic[bool] # successes in Closed can skip the lock
     hasConsecutive: Atomic[bool] # mirror of `consecutive > 0`
+    rejectFast: Atomic[bool]  # rejections may skip the lock (BM3)
+    openUntil: Atomic[int64]  # read without the lock by the rejection fast path (BM3)
+    cfg: BreakerConfig
+    latency: seq[Atomic[int64]]  # O4: empty unless latencyPrecision > 0
+    pad0: array[64, byte]
+    # Written by every success:
     successes: Atomic[int64]
+    pad1: array[64, byte]
+    # Written by every rejection:
+    rejected: Atomic[int64]
+    pad2: array[64, byte]
+    # Written by every sampled call when latency tracking is on:
+    latencySum: Atomic[int64]    # O4: total sampled nanoseconds (for _sum)
+    pad3: array[64, byte]
+    # Under the lock:
     callbackErrors: Atomic[int]
     lock: Lock
-    cfg: BreakerConfig
     window: SlidingWindow
     consecutive: int
-    openUntil: int64
     openLevel: int
     currentOpenNs: int64
     probesInFlight: int
     probeSuccesses: int
     rng: Rand
-    failures, ignored, rejected, shadowRejected, slowCalls, transitions: int64
+    failures, ignored, shadowRejected, slowCalls, transitions: int64
     history: seq[TransitionEvent]
     historyNext: int
 
@@ -50,6 +69,17 @@ type
     shadow: bool
     done: bool
 
+# P5/R3: the hot groups must stay a full cache line apart.
+static:
+  const
+    latencyAt = offsetOf(CircuitBreakerObj, latency)
+    successesAt = offsetOf(CircuitBreakerObj, successes)
+    rejectedAt = offsetOf(CircuitBreakerObj, rejected)
+    latencySumAt = offsetOf(CircuitBreakerObj, latencySum)
+  doAssert successesAt - latencyAt >= 64 + sizeof(seq[int])
+  doAssert rejectedAt - successesAt >= 64
+  doAssert latencySumAt - rejectedAt >= 64
+
 # ---------------------------------------------------------------- helpers
 
 template locked(b: BreakerPtr; body: untyped) =
@@ -61,6 +91,22 @@ template locked(b: BreakerPtr; body: untyped) =
       release(b.lock)
   else:
     body
+
+when defined(linux):
+  import std/posix
+  const
+    clockMonotonicCoarse = ClockId(6)  # CLOCK_MONOTONIC_COARSE
+    coarseMarginNs = 20_000_000'i64
+      ## The coarse clock lags the precise one by about one tick (1.4 ms was
+      ## measured against a declared 1 ms resolution). Rejections closer than
+      ## this to the deadline use the precise clock.
+
+  proc coarseNowNs(): int64 {.inline.} =
+    ## Same time base as `getMonoTime` (CLOCK_MONOTONIC), never ahead of it,
+    ## at about 8 ns instead of 19 ns per read.
+    var ts: Timespec
+    discard clock_gettime(clockMonotonicCoarse, ts)
+    ts.tv_sec.int64 * 1_000_000_000 + ts.tv_nsec.int64
 
 proc nowNs(b: BreakerPtr): int64 {.inline.} =
   if b.cfg.clock.isNil: getMonoTime().ticks else: b.cfg.clock()
@@ -79,9 +125,12 @@ proc tracksWindow(c: BreakerConfig): bool {.inline.} =
   c.policy == FailureRate or c.slowCallDuration.nanos > 0
 
 proc updateFastFlags(b: BreakerPtr) =
-  b.needsStart.store(b.cfg.slowCallDuration.nanos > 0 or not b.cfg.onCall.isNil,
-                     moRelease)
+  b.needsStart.store(b.cfg.slowCallDuration.nanos > 0 or not b.cfg.onCall.isNil or
+                     b.cfg.latencyPrecision > 0, moRelease)
   b.fastSuccess.store(not b.cfg.tracksWindow and b.cfg.onCall.isNil, moRelease)
+  # A rejection has no side effect besides the counter, unless shadow mode
+  # lets it through or an onCall event must be built.
+  b.rejectFast.store(not b.cfg.shadowMode and b.cfg.onCall.isNil, moRelease)
 
 proc setConsecutive(b: BreakerPtr; v: int) {.inline.} =
   b.consecutive = v
@@ -101,6 +150,8 @@ proc newCircuitBreaker*(cfg: BreakerConfig): CircuitBreaker =
   b.window = newWindow(cfg)
   b.rng = initRand(if cfg.seed != 0: cfg.seed else: getMonoTime().ticks)
   b.currentOpenNs = cfg.openTimeout.nanos
+  if cfg.latencyPrecision > 0:
+    b.latency = newSeq[Atomic[int64]](latencyBucketCount(cfg.latencyPrecision))
   b.storeState(Closed, 0)
   b.updateFastFlags()
 
@@ -141,7 +192,7 @@ proc transitionLocked(b: BreakerPtr; to: CircuitState; reason: TransitionReason;
       t = int64(f)
     inc b.openLevel
     b.currentOpenNs = t
-    b.openUntil = now + t
+    b.openUntil.store(now + t, moRelaxed)  # published by storeState (release)
     ev.openFor = initDuration(nanoseconds = t)
   of HalfOpen:
     discard
@@ -181,9 +232,14 @@ proc dispatch(b: BreakerPtr; p: var Pending) =
 proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
                 v: Verdict) {.raises: [].}
 
-proc `=destroy`*(p: Permit) =
-  if not p.done and not p.cb.isNil:
-    p.cb.recordCore(p.gen, p.startNs, p.probe, p.shadow, countAsFailure())
+proc recordForgotten(p: Permit) {.noinline.} =
+  ## Cold path: the permit went out of scope without an outcome.
+  p.cb.recordCore(p.gen, p.startNs, p.probe, p.shadow, countAsFailure())
+
+proc `=destroy`*(p: Permit) {.inline.} =
+  # Inlined so that the common case (outcome recorded, or no permit granted)
+  # is two loads and a branch.
+  if not p.done and not p.cb.isNil: recordForgotten(p)
 
 proc `=copy`*(dst: var Permit; src: Permit) {.error: "a Permit cannot be copied".}
 proc `=dup`*(src: Permit): Permit {.error: "a Permit cannot be copied".}
@@ -192,6 +248,39 @@ proc `=dup`*(src: Permit): Permit {.error: "a Permit cannot be copied".}
 
 proc grantLocked(b: BreakerPtr; gen: int; now: int64; probe, shadow: bool): Permit {.inline.} =
   Permit(cb: b, gen: gen, startNs: now, probe: probe, shadow: shadow)
+
+proc rejectFast(b: BreakerPtr; s0: CircuitState; retryAfter: var int64;
+                rejState: var CircuitState): bool {.inline.} =
+  ## BM3: rejections without the lock, kept out of `acquireImpl` so the common
+  ## case does not pay for that proc's locals and cleanup. ForcedOpen needs no
+  ## clock. For Open, the state was loaded (acquire) before the deadline, so
+  ## the deadline is at least as new as the state; a rejection that races with
+  ## a transition linearizes just before it.
+  if not b.rejectFast.load(moAcquire): return false
+  if s0 == ForcedOpen:
+    discard b.rejected.fetchAdd(1, moRelaxed)
+    rejState = ForcedOpen
+    retryAfter = 0
+    return true
+  if s0 == Open:
+    let until = b.openUntil.load(moRelaxed)
+    when defined(linux):
+      if b.cfg.clock.isNil:
+        # The coarse clock is never ahead of the precise one, so far from the
+        # deadline it proves the open period has not ended. The hint may be
+        # longer than the truth by the coarse clock's lag (about 1 ms).
+        let coarse = coarseNowNs()
+        if until - coarse > coarseMarginNs:
+          discard b.rejected.fetchAdd(1, moRelaxed)
+          rejState = Open
+          retryAfter = until - coarse
+          return true
+    let now = b.nowNs()
+    if now < until:
+      discard b.rejected.fetchAdd(1, moRelaxed)
+      rejState = Open
+      retryAfter = until - now
+      return true
 
 proc acquireImpl(b: BreakerPtr; permit: var Permit; retryAfter: var int64;
                  rejState: var CircuitState): bool =
@@ -204,7 +293,7 @@ proc acquireImpl(b: BreakerPtr; permit: var Permit; retryAfter: var int64;
   let now = b.nowNs()
   locked(b):
     var (s, gen) = b.loadState()
-    if s == Open and now >= b.openUntil:
+    if s == Open and now >= b.openUntil.load(moRelaxed):
       b.transitionLocked(HalfOpen, trOpenTimeoutElapsed, now, p)
       (s, gen) = b.loadState()
     case s
@@ -217,7 +306,7 @@ proc acquireImpl(b: BreakerPtr; permit: var Permit; retryAfter: var int64;
         permit = b.grantLocked(gen, now, true, false)
         result = true
     of Open:
-      retryAfter = b.openUntil - now
+      retryAfter = b.openUntil.load(moRelaxed) - now
     of ForcedOpen:
       retryAfter = 0
     if not result:
@@ -230,7 +319,7 @@ proc acquireImpl(b: BreakerPtr; permit: var Permit; retryAfter: var int64;
           p.call = CallEvent(outcome: coShadowRejected, state: s)
           p.hasCall = true
       else:
-        inc b.rejected
+        discard b.rejected.fetchAdd(1, moRelaxed)
         if not b.cfg.onCall.isNil:
           p.call = CallEvent(outcome: coRejected, state: s)
           p.hasCall = true
@@ -251,6 +340,9 @@ proc acquire*(cb: CircuitBreaker): Permit {.raises: [CircuitOpenError].} =
     let b = addr cb[]
     var retryAfter = 0'i64
     var s = Closed
+    let s0 = b.loadState().state
+    if s0 in {Open, ForcedOpen} and b.rejectFast(s0, retryAfter, s):
+      raise b.newOpenError(s, retryAfter)
     if not b.acquireImpl(result, retryAfter, s):
       raise b.newOpenError(s, retryAfter)
 
@@ -262,7 +354,10 @@ proc tryAcquire*(cb: CircuitBreaker; permit: var Permit): bool =
   else:
     var retryAfter = 0'i64
     var s = Closed
-    (addr cb[]).acquireImpl(permit, retryAfter, s)
+    let b = addr cb[]
+    let s0 = b.loadState().state
+    if s0 in {Open, ForcedOpen} and b.rejectFast(s0, retryAfter, s): return false
+    b.acquireImpl(permit, retryAfter, s)
 
 # ---------------------------------------------------------------- record
 
@@ -283,6 +378,10 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
       of vkFailure: inc b.failures
       of vkIgnore: inc b.ignored
       if slow: inc b.slowCalls
+      if b.cfg.latencyPrecision > 0 and startNs > 0 and v.kind != vkIgnore:
+        discard b.latency[latencyBucketOf(elapsed, b.cfg.latencyPrecision)]
+          .fetchAdd(1, moRelaxed)
+        discard b.latencySum.fetchAdd(elapsed, moRelaxed)
       let (s, curGen) = b.loadState()
       if not b.cfg.onCall.isNil:
         p.hasCall = true
@@ -312,7 +411,9 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
               if st.calls >= b.cfg.minimumCalls:
                 if b.cfg.policy == FailureRate and
                    st.failureRate >= b.cfg.failureRateThreshold:
-                  b.transitionLocked(Open, trFailureRate, now, p)
+                  # a success may trip here without having read the clock
+                  b.transitionLocked(Open, trFailureRate,
+                                     (if needNow: now else: b.nowNs()), p)
                 elif slowNs > 0 and st.slowCallRate >= b.cfg.slowCallRateThreshold:
                   b.transitionLocked(Open, trSlowCallRate, now, p)
         of HalfOpen:
@@ -324,7 +425,8 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
             of vkSuccess:
               inc b.probeSuccesses
               if b.probeSuccesses >= b.cfg.successThreshold:
-                b.transitionLocked(Closed, trProbeSucceeded, now, p)
+                b.transitionLocked(Closed, trProbeSucceeded,
+                                   (if needNow: now else: b.nowNs()), p)
             of vkIgnore:
               discard
         of Open, ForcedOpen, Disabled:
@@ -332,6 +434,46 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
     b.dispatch(p)
   except Exception:
     discard  # dispatch already contains callback errors; nothing else raises
+
+proc sampleElapsed(b: BreakerPtr; elapsed: int64) {.inline.} =
+  ## O4: one histogram sample; atomics only, callable with or without the lock.
+  discard b.latency[latencyBucketOf(elapsed, b.cfg.latencyPrecision)].fetchAdd(1, moRelaxed)
+  discard b.latencySum.fetchAdd(elapsed, moRelaxed)
+
+proc tripLocked(b: BreakerPtr; reason: TransitionReason; now: int64) {.noinline.} =
+  ## Rare branch of `recordSuccessLean`: callbacks are off, so the pending
+  ## events are dropped instead of dispatched.
+  var p: Pending
+  try:
+    b.transitionLocked(Open, reason, now, p)
+  except Exception:
+    discard
+
+proc recordSuccessLean(b: BreakerPtr; gen: int; startNs: int64) =
+  ## P2: a success that must go through the lock (sliding window, slow-call
+  ## detection) when no callback is set. Same decisions as the Closed branch
+  ## of `recordCore` for a success, without its event bookkeeping, which cost
+  ## more than the lock itself.
+  locked(b):
+    let needNow = startNs > 0 or (b.window.kind == TimeWindow and b.cfg.tracksWindow)
+    let now = if needNow: b.nowNs() else: 0'i64
+    let elapsed = if startNs > 0: now - startNs else: 0'i64
+    let slowNs = b.cfg.slowCallDuration.nanos
+    let slow = slowNs > 0 and startNs > 0 and elapsed >= slowNs
+    discard b.successes.fetchAdd(1, moRelaxed)
+    if slow: inc b.slowCalls
+    if b.cfg.latencyPrecision > 0 and startNs > 0: b.sampleElapsed(elapsed)
+    let (s, curGen) = b.loadState()
+    if s == Closed and gen == curGen:
+      if b.cfg.tracksWindow: b.window.add(now, false, slow)
+      b.setConsecutive(0)
+      let st = b.window.stats(now)
+      if st.calls >= b.cfg.minimumCalls:
+        if b.cfg.policy == FailureRate and
+           st.failureRate >= b.cfg.failureRateThreshold:
+          b.tripLocked(trFailureRate, if needNow: now else: b.nowNs())
+        elif slowNs > 0 and st.slowCallRate >= b.cfg.slowCallRateThreshold:
+          b.tripLocked(trSlowCallRate, if needNow: now else: b.nowNs())
 
 proc record*(p: var Permit; v: Verdict) =
   ## Records the outcome of the call guarded by `p`. Later calls are no-ops.
@@ -343,10 +485,16 @@ proc record*(p: var Permit; v: Verdict) =
     # Lock-free hot path (P1/P2): a success in Closed only resets the
     # consecutive counter, and that needs the lock only when it is not zero.
     discard b.successes.fetchAdd(1, moRelaxed)
+    if b.cfg.latencyPrecision > 0 and p.startNs > 0:
+      b.sampleElapsed(b.nowNs() - p.startNs)
     if b.hasConsecutive.load(moAcquire):
       locked(b):
         let (s, gen) = b.loadState()
         if s == Closed and gen == p.gen: b.setConsecutive(0)
+    return
+  if v.kind == vkSuccess and not p.probe and not p.shadow and
+     b.cfg.onCall.isNil and b.cfg.onTransition.isNil:
+    b.recordSuccessLean(p.gen, p.startNs)
     return
   b.recordCore(p.gen, p.startNs, p.probe, p.shadow, v)
 
@@ -511,16 +659,27 @@ proc metrics*(cb: CircuitBreaker): BreakerMetrics =
     result = BreakerMetrics(
       name: b.cfg.name, state: s, successes: b.successes.load(moRelaxed),
       failures: b.failures,
-      ignored: b.ignored, rejected: b.rejected, shadowRejected: b.shadowRejected,
+      ignored: b.ignored, rejected: b.rejected.load(moRelaxed), shadowRejected: b.shadowRejected,
       slowCalls: b.slowCalls, transitions: b.transitions,
       window: b.window.stats(now), consecutiveFailures: b.consecutive,
       probesInFlight: b.probesInFlight,
       currentOpenTimeout: initDuration(nanoseconds = b.currentOpenNs),
-      retryAfter: (if s == Open: initDuration(nanoseconds = max(0'i64, b.openUntil - now))
-                   else: Duration()))
+      retryAfter: (if s == Open: initDuration(nanoseconds = max(0'i64, b.openUntil.load(moRelaxed) - now))
+                   else: Duration()),
+      latencyPrecision: b.cfg.latencyPrecision,
+      latencySumNs: b.latencySum.load(moRelaxed))
+    for i in 0 ..< b.latency.len:
+      let c = b.latency[i].load(moRelaxed)
+      result.latencyBuckets.add c
+      result.latencyCount += c
   result.callbackErrors = b.callbackErrors.load(moAcquire)
 
 proc consecutiveFailures*(cb: CircuitBreaker): int = cb.metrics.consecutiveFailures
+
+proc latencyQuantile*(m: BreakerMetrics; p: float): Duration =
+  ## O4: the `p`-quantile of the call latency (0 < p <= 1), within 1/k relative
+  ## error, where k is `latencyPrecision`. Zero when tracking is off or empty.
+  initDuration(nanoseconds = latencyPercentile(m.latencyBuckets, m.latencyPrecision, p))
 proc retryAfter*(cb: CircuitBreaker): Duration = cb.metrics.retryAfter
 
 proc explain*(cb: CircuitBreaker): seq[TransitionEvent] =
@@ -550,7 +709,8 @@ proc disable*(cb: CircuitBreaker) = manualTransition(cb, Disabled)
 
 proc reconfigure*(cb: CircuitBreaker; cfg: BreakerConfig) =
   ## Atomically replaces the numeric settings (N4). `name`, `clock`,
-  ## `classifyError`, `onTransition`, `onCall` and `seed` are kept.
+  ## `classifyError`, `onTransition`, `onCall`, `seed` and `latencyPrecision`
+  ## (the histogram is sized at creation) are kept.
   ## Changing the window shape clears the window; the state is preserved.
   validate(cfg)
   let b = addr cb[]

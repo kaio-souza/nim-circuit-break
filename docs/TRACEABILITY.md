@@ -50,10 +50,10 @@ Script rules:
 | O1 | Events with context | done | t_api | n/a | |
 | O2 | Callbacks isolated from exceptions | done | t_api | n/a | |
 | O3 | Call events | done | t_api | BM1 | |
-| O4 | Metrics | partial | t_api | BM9 | counters yes; latency percentiles no |
+| O4 | Latency percentiles | done | t_latency | BM10 | opt-in via `latencyPrecision`; log-bucket histogram, 1/k relative error |
 | O5 | Immutable snapshot | done | t_api | BM9 | = B2 |
-| O6 | Prometheus exporter | deferred | | | |
-| O7 | Logging hook | deferred | | | |
+| O6 | Prometheus exporter | done | t_prometheus | BM11 | `renderPrometheus`, separate module; the app serves the text |
+| O7 | Logging hook | done | t_logs | BM12 | `withTransitionLog`, transitions only; composes with `onTransition` |
 | C1 | Documented threading | done | t_concurrency | n/a | |
 | C2 | Atomics on the hot path | done | t_concurrency | BM2 | |
 | C3 | Single Open→HalfOpen transition | done | t_concurrency | n/a | short lock, not CAS (ADR-0005) |
@@ -61,10 +61,10 @@ Script rules:
 | C5 | No lock without threads | done | CI | n/a | `when compileOption("threads")` |
 | C6 | No global state | done | CI | n/a | |
 | P1 | Zero allocation in Closed | done | CI | BM1 | 0.00 alloc/op |
-| P2 | Lock-free Closed | partial | CI | BM1 | lock-free with the consecutive policy; `FailureRate` still locks on record |
+| P2 | Lock-free Closed | partial | t_lean_path | BM1 | lock-free with the consecutive policy; `FailureRate` takes a lean locked path (no event bookkeeping) |
 | P3 | O(1) window | done | CI | BM5 | |
 | P4 | No closure per call | done | CI | BM6 | |
-| P5 | False-sharing padding | pending | | | |
+| P5 | False-sharing padding | done | CI | BM2 | hot groups 64 bytes apart, compile-time `offsetOf` checks; -31 to -45% per call at 2 to 8 threads |
 | P6 | Benchmark suite | done | CI | BM1 | regression gate deferred (R4) |
 | P7 | < 50 ns in Closed | partial | CI | BM1 | 41–51 ns measured; see README |
 | P8 | No dependencies | done | CI | n/a | |
@@ -100,17 +100,17 @@ Script rules:
 | G7 | Active probe | deferred | | | |
 | B1 | Events with context | done | t_api | n/a | |
 | B2 | `metrics()` | done | t_api | BM9 | |
-| B3 | Prometheus | deferred | | | |
+| B3 | Prometheus | done | t_prometheus | BM11 | same exporter as O6; no dependency in the core |
 | B4 | `explain()` | done | t_api, t_values | BM9 | |
 | B5 | Tracing | deferred | | | |
 | R1 | Reproducible benchmarks | done | CI | BM0 | |
-| R3 | Atomics and padding | partial | CI | BM2 | atomics yes; padding no (P5) |
+| R3 | Atomics and padding | done | CI | BM2 | atomics and padding (P5) |
 | R4 | Regression gate | deferred | | | SPEC 27.4 |
 | Y1 | `callAsync` (asyncdispatch) | done | t_async | n/a | |
 | Y2 | Chronos | deferred | | | |
 | Y3 | Cancellation | deferred | | | |
 | Y4 | JS target | deferred | | | |
-| I1 | Composition guide | pending | | | |
+| I1 | Composition guide | done | CI | n/a | `docs/COMPOSITION.md`; `examples/composition.nim` compiled in CI (Q8) |
 | I2 | HTTP/web adapters | deferred | | | |
 | I3 | C API | deferred | | | |
 | I4 | Concept equivalence with other languages | deferred | | | |

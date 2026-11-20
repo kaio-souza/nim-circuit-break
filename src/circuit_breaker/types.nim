@@ -79,8 +79,9 @@ type
 
   BreakerConfig* = object
     ## Configuration. Build with `initBreakerConfig`; validated by `newCircuitBreaker`.
-    ## `name`, `clock`, `classifyError`, `onTransition`, `onCall` and `seed` are
-    ## fixed at creation; `reconfigure` changes only the numeric settings.
+    ## `name`, `clock`, `classifyError`, `onTransition`, `onCall`, `seed` and
+    ## `latencyPrecision` are fixed at creation; `reconfigure` changes only the
+    ## other numeric settings.
     name*: string
     policy*: PolicyKind
     failureThreshold*: int
@@ -100,6 +101,7 @@ type
     successThreshold*: int
     shadowMode*: bool                 ## Evaluate but never reject.
     historySize*: int                 ## Transitions kept for `explain`.
+    latencyPrecision*: int            ## O4: sub-buckets per octave, 1..8; 0 disables latency tracking.
     classifyError*: ErrorClassifier
     onTransition*: TransitionCallback
     onCall*: CallCallback
@@ -122,6 +124,10 @@ type
     probesInFlight*: int
     currentOpenTimeout*: Duration  ## Open period currently in effect (with backoff).
     retryAfter*: Duration          ## Time until the next probe when Open.
+    latencyPrecision*: int         ## 0 when latency tracking is off.
+    latencyCount*: int64           ## Samples in the latency histogram.
+    latencyBuckets*: seq[int64]    ## Histogram counts; see `latencyPercentile`.
+    latencySumNs*: int64          ## Sum of the sampled latencies.
 
 proc countAsSuccess*(): Verdict {.inline.} = Verdict(kind: vkSuccess)
 proc countAsFailure*(openFor = Duration()): Verdict {.inline.} =
@@ -148,6 +154,7 @@ proc initBreakerConfig*(
     successThreshold = 1,
     shadowMode = false,
     historySize = 32,
+    latencyPrecision = 0,
     classifyError: ErrorClassifier = nil,
     onTransition: TransitionCallback = nil,
     onCall: CallCallback = nil,
@@ -164,7 +171,8 @@ proc initBreakerConfig*(
     backoffMultiplier: backoffMultiplier, maxOpenTimeout: maxOpenTimeout,
     jitter: jitter, halfOpenMaxProbes: halfOpenMaxProbes,
     successThreshold: successThreshold, shadowMode: shadowMode,
-    historySize: historySize, classifyError: classifyError,
+    historySize: historySize, latencyPrecision: latencyPrecision,
+    classifyError: classifyError,
     onTransition: onTransition, onCall: onCall, clock: clock, seed: seed)
 
 proc validate*(c: BreakerConfig) {.raises: [ValueError].} =
@@ -189,6 +197,8 @@ proc validate*(c: BreakerConfig) {.raises: [ValueError].} =
   req c.halfOpenMaxProbes >= 1, "halfOpenMaxProbes must be >= 1"
   req c.successThreshold >= 1, "successThreshold must be >= 1"
   req c.historySize >= 0, "historySize must be >= 0"
+  req c.latencyPrecision >= 0 and c.latencyPrecision <= 8,
+    "latencyPrecision must be in 0..8"
   if c.policy == FailureRate and c.windowKind == CountWindow:
     req c.minimumCalls <= c.windowSize,
       "minimumCalls must be <= windowSize, otherwise the rate is never evaluated"

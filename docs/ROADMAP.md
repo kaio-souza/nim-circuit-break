@@ -63,15 +63,17 @@ Legend: [x] done · [ ] pending · [~] deferred
 - [x] Tag `v0.2.0` and date it in the CHANGELOG
 - [~] Publish to the `nim-lang/packages` index (name `circuit_breaker`, tags in `packages.json`): deferred until the library is more mature; installing from the git URL and tag works meanwhile
 
-## v0.3: close performance and proof gaps
+## v0.3: close performance, proof and observability gaps
 
 - [x] V2/Q5: model test (random sequences compared against a reference model), `tests/t_model.nim` with proptest stateful testing
-- [ ] P2: make success recording lock-free with the `FailureRate` policy too
-- [ ] BM3: lock-free rejection in `Open` (63 ns today, more expensive than a success; the spec wants the opposite)
-- [ ] P5/R3: padding against false sharing on atomic counters
-- [ ] O4: latency percentiles (p50/p95/p99) in metrics
-- [ ] I1: composition guide with retry, backoff, bulkhead and timeout
-- [ ] Report the ORC + `-d:nimAllocStats` crash upstream ([repro](upstream/repro_orc_allocstats.nim))
+- [~] P2: success recording with the `FailureRate` policy. Measured first: the lock was about 7 ns of 56 ns; most of the rest was event bookkeeping paid even without callbacks. Done instead: a lean locked success path when no callback is set (56 to 45 ns; BM1 FailureRate -8% min, slow-call path -6% min), checked against the general path by a differential test (`tests/t_lean_path.nim`, 600 random sequences). A lock-free window is not pursued: the remaining lock cost does not justify it
+- [x] BM3: lock-free rejection. `ForcedOpen` needs no clock (53 to 22 ns); `Open` uses the coarse monotonic clock on Linux when the deadline is more than 20 ms away, the precise clock otherwise (about 31 ns). Both are now below a success (about 39 ns). Also inlined the `Permit` destructor (10 to 2.5 ns per permit). An earlier attempt was measured wrongly: the benchmark used `ForcedOpen`, which that attempt did not cover
+- [x] P5/R3: fields grouped by access pattern with 64-byte padding between hot groups, checked at compile time. BM2 median per call: -31% at 2 threads, -44% at 4, -45% at 8; unchanged at 1. Cost: 256 bytes per breaker. The first measurement, called inconclusive, came from a noisy method
+- [x] O4: latency percentiles (p50/p95/p99) in metrics, opt-in via `latencyPrecision`
+- [x] O6/B3: Prometheus/OpenMetrics exporter in a separate module (no dependency in the core), exposes the O4 metrics
+- [x] O7: optional `std/logging` hook over the transition callback (call events not logged, to avoid noise)
+- [x] I1: composition guide with retry, backoff, bulkhead and timeout (`docs/COMPOSITION.md`, `examples/composition.nim`)
+- [~] Report the ORC + `-d:nimAllocStats` crash upstream: reproduced on Nim 2.2.4, issue drafted in [`upstream/ISSUE-orc-allocstats.md`](upstream/ISSUE-orc-allocstats.md), not yet filed (waiting for review)
 
 ## v0.4: async, documentation and platforms
 
@@ -95,7 +97,7 @@ As in SPEC §13: every P0 and P1 implemented and tested; zero warnings on orc/ar
 - [~] F9 pluggable policy, A13 registry, N11 breaker groups
 - [~] A14 bulkhead (composition preferred, [ADR-0001](decisions/0001-scope-circuit-breaker-only.md))
 - [~] G6 gradual recovery (ramp-up), G7 active probe
-- [~] O6/B3 Prometheus exporter, B5 tracing, O7 logging hook
+- [~] B5 tracing
 - [~] I2 HTTP/web adapters, I3 C API, Y4/N12 JS/WASM targets
 - [~] N5 distributed state, N6 priorities, N7 SLO-based threshold
 - [~] K4 JSON config, V4 fuzzing, V6 formal spec

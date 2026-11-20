@@ -1,22 +1,24 @@
 # Roadmap
 
-Updated 2026-11-19. IDs refer to [`SPEC.md`](SPEC.md); the detailed status of each one is in [`TRACEABILITY.md`](TRACEABILITY.md).
+Updated 2026-11-20. IDs refer to [`SPEC.md`](SPEC.md); the detailed status of each one is in [`TRACEABILITY.md`](TRACEABILITY.md).
 
 Legend: [x] done · [ ] pending · [~] deferred
 
 ## Where we are
 
-**v0.2.0 is implemented but not yet published.** It is a full rewrite of v0.1 and delivered at once most of what the original plan spread across v0.2 to v0.7.
+**v0.3.0 is released** (tag `v0.3.0`). v0.2.0 was the full rewrite of v0.1; v0.3.0 adds observability (latency percentiles, Prometheus, logging), the model test, a correctness fix for `FailureRate`, and performance work on rejections and multi-threaded use. Next: v0.4.
 
 | Indicator | Value |
 |---|---|
 | Requirements in the matrix | 116 |
-| Done or partial (with tests) | 86 |
-| Tests | 59, all passing (orc/arc × threads on/off × release/debug) |
-| Value tests | 7 (`tests/t_values.nim`) |
-| Benchmarks | BM0–BM9 (`nimble bench`) |
-| `call` in `Closed` | 46 ns/op, 0 allocations (P7 target: < 50 ns) |
-| Dependencies | none beyond the standard library |
+| Done or partial (with tests) | 93 (89 done, 4 partial; 23 deferred, none pending) |
+| Tests | 90, all passing |
+| Value tests | 9 (`tests/t_values.nim`, O4, O6) |
+| Model and differential tests | proptest model (1000 sequences), lean-path differential (600 sequences) |
+| Benchmarks | BM0–BM12 (`nimble bench`) |
+| `call` in `Closed` | 28–37 ns/op (minimum of interleaved runs), 0 allocations (P7 target: < 50 ns) |
+| Rejection (`tryAcquire`) | about 22 ns `ForcedOpen`, about 31 ns `Open`; below a success |
+| Dependencies | none beyond the standard library (proptest for tests only) |
 
 ## v0.2.0: delivered
 
@@ -54,16 +56,16 @@ Legend: [x] done · [ ] pending · [~] deferred
 - [x] CI and benchmark workflows, README, 3 examples, CHANGELOG, LICENSE
 - [x] Technical decisions recorded as ADRs ([`decisions/`](decisions/README.md))
 
-## Publishing v0.2.0 (next step)
+## Publishing v0.2.0: done
 
 - [x] Workflows trigger on `master`, the local branch (the rename to `main` is no longer needed)
-- [ ] First commit and push to GitHub
-- [ ] First real CI run (validates the `nimlang/nim:2.2.4` image and `nimble test` with a commit)
+- [x] First commit and push to GitHub
+- [x] First real CI run (validates the `nimlang/nim:2.2.4` image and `nimble test` with a commit)
 - [x] Replace `<repository-url>` in the README with the real URL
 - [x] Tag `v0.2.0` and date it in the CHANGELOG
 - [~] Publish to the `nim-lang/packages` index (name `circuit_breaker`, tags in `packages.json`): deferred until the library is more mature; installing from the git URL and tag works meanwhile
 
-## v0.3: close performance, proof and observability gaps
+## v0.3.0: delivered (close performance, proof and observability gaps)
 
 - [x] V2/Q5: model test (random sequences compared against a reference model), `tests/t_model.nim` with proptest stateful testing
 - [~] P2: success recording with the `FailureRate` policy. Measured first: the lock was about 7 ns of 56 ns; most of the rest was event bookkeeping paid even without callbacks. Done instead: a lean locked success path when no callback is set (56 to 45 ns; BM1 FailureRate -8% min, slow-call path -6% min), checked against the general path by a differential test (`tests/t_lean_path.nim`, 600 random sequences). A lock-free window is not pursued: the remaining lock cost does not justify it
@@ -102,10 +104,11 @@ As in SPEC §13: every P0 and P1 implemented and tested; zero warnings on orc/ar
 - [~] N5 distributed state, N6 priorities, N7 SLO-based threshold
 - [~] K4 JSON config, V4 fuzzing, V6 formal spec
 
-## Known limitations of v0.2.0
+## Known limitations of v0.3.0
 
-- Rejection in `Open` takes the lock (63 ns via `tryAcquire`); via `call` it allocates the exception (270 ns, 3 allocations). Use `tryAcquire` on hot paths.
-- With the `FailureRate` policy or slow-call detection, recording a success takes the lock (73–127 ns).
+- Rejection via `call` allocates the exception (about 175 ns). Use `tryAcquire` on hot paths (about 22 to 31 ns, no allocation).
+- With the `FailureRate` policy or slow-call detection, recording a success takes the lock (lean path, about 45 ns in isolation; more with a clock read).
+- Latency tracking (O4) reads the precise clock twice per call: about 47 ns extra when enabled.
 - `KeyedBreaker` in multi-threaded code requires `--mm:atomicArc` ([ADR-0011](decisions/0011-keyed-breaker-lru.md)).
 - A `CircuitBreaker` must outlive the `Permit`s it grants ([ADR-0006](decisions/0006-permit-guard.md)).
 - CI runs on Linux only.

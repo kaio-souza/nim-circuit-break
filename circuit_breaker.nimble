@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.2.0"
+version       = "0.3.0"
 author        = "Kaio Souza"
 description   = "Circuit breaker for Nim: correct state machine, rate and slow-call policies, metrics, async and keyed breakers."
 license       = "MIT"

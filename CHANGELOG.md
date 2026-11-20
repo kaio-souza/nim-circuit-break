@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow semantic versioning.
 
-## Unreleased
+## 0.3.0 - 2026-11-20
 
 ### Fixed
 - A success that tripped the `FailureRate` policy on a count window, with no

@@ -96,7 +96,7 @@ This document defines what is expected of a complete circuit breaker library. Ea
 | ID | Pri | Requirement |
 |----|-----|-------------|
 | P1 | P0 | Hot path in `Closed` with no heap allocation and no syscalls beyond one clock read (or none, if possible). |
-| P2 | P0 | `Closed` without locks: atomic operations only (counters). |
+| P2 | P0 | `Closed` without locks: atomic operations only (counters). Scope amended by [ADR-0015](decisions/0015-lean-locked-path-for-windowed-policies.md): windowed policies use a lean locked success path. |
 | P3 | P1 | Sliding window as a fixed-size **ring buffer** with preallocated buckets. O(1) per call. |
 | P4 | P1 | No closures per call (templates/generics/`{.inline.}` procs). |
 | P5 | P1 | Layout that avoids **false sharing** (cache-line padding on atomic counters). |

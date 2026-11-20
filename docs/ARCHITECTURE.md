@@ -1,6 +1,6 @@
 # Architecture
 
-The code as it stands in v0.2.0. The reasons behind each choice are in [`decisions/`](decisions/README.md).
+The code as it stands in v0.3.0. The reasons behind each choice are in [`decisions/`](decisions/README.md).
 
 ## Modules
 
@@ -9,14 +9,17 @@ src/
   circuit_breaker.nim          # entry point: re-exports types and core
   circuit_breaker/
     types.nim                  # enums, BreakerConfig, validate/diagnose, events, metrics, CircuitOpenError
-    window.nim                 # SlidingWindow: count and time windows, O(1)
+    window.nim                 # SlidingWindow: count and time windows, O(1) (internal)
+    latency.nim                # log-bucket latency histogram math (O4)
     core.nim                   # state machine, Permit, call/tryCall/callOr/withBreaker, control and inspection
+    prometheus.nim             # renderPrometheus: text exposition (O6/B3), explicit import
+    logs.nim                   # withTransitionLog: std/logging hook (O7), explicit import
     async.nim                  # callAsync (std/asyncdispatch), explicit import
     keyed.nim                  # KeyedBreaker[K]: one breaker per key with LRU, explicit import
     testing.nim                # FakeClock, explicit import
 ```
 
-Module dependencies: `types` ← `window` ← `core` ← (`async`, `keyed`). `testing` depends only on `types`. No dependency outside the standard library ([ADR-0010](decisions/0010-zero-dependencies-and-async.md)).
+Module dependencies: `types` ← (`window`, `latency`) ← `core` ← (`async`, `keyed`, `prometheus`). `logs` and `testing` depend only on `types`. The core never imports the optional modules (checked by a test in `t_prometheus`). No dependency outside the standard library ([ADR-0010](decisions/0010-zero-dependencies-and-async.md)).
 
 ## Call flow
 
@@ -26,6 +29,9 @@ Every API (`call`, `tryCall`, `callOr`, `withBreaker`, `callAsync`, `KeyedBreake
 call(fn)
   └─ acquire()                 → Permit  or  CircuitOpenError
        ├─ Closed/Disabled: reads the atomic word, grants without a lock
+       ├─ ForcedOpen: rejects without a lock or a clock read (BM3)
+       ├─ Open, deadline far: rejects without a lock; on Linux the coarse
+       │  monotonic clock proves the deadline has not passed (BM3)
        └─ other states: short lock
             ├─ Open and deadline passed → transition to HalfOpen (lazy)
             ├─ HalfOpen: grants if probesInFlight < halfOpenMaxProbes
@@ -33,6 +39,8 @@ call(fn)
   └─ fn()
   └─ Permit.record(verdict)
        ├─ success in Closed with the consecutive policy: no lock (fast path)
+       ├─ success with a window and no callbacks: lean locked path
+       │  (ADR-0015; checked against recordCore by t_lean_path)
        └─ other cases: recordCore under the lock
             ├─ updates counters and window
             ├─ evaluates the policy → transition to Open/Closed
@@ -47,12 +55,15 @@ call(fn)
 
 `CircuitBreakerObj` (in `core.nim`) separates what is read without a lock from what the lock protects:
 
-| Field | Access | Purpose |
-|---|---|---|
-| `packed` | atomic | `(generation shl 3) or state` in one word |
-| `needsStart`, `fastSuccess`, `hasConsecutive` | atomic | flags that let the fast path skip the clock and the lock |
-| `successes`, `callbackErrors` | atomic | counters incremented outside the lock |
-| `window`, `consecutive`, `openUntil`, `openLevel`, `probesInFlight`, history, other counters | under `lock` | policy and transition state |
+Fields are grouped by how threads touch them, and each group written by every call has its own cache line (64-byte pads; P5/R3). Compile-time `offsetOf` checks keep the layout from regressing.
+
+| Group | Fields | Access | Purpose |
+|---|---|---|---|
+| read by every call | `packed`, `needsStart`, `fastSuccess`, `hasConsecutive`, `rejectFast`, `openUntil`, `cfg`, `latency` | atomic or fixed | state word `(generation shl 3) or state`, fast-path flags, open deadline (written before the state's release store) |
+| written by every success | `successes` | atomic, own line | |
+| written by every rejection | `rejected` | atomic, own line | |
+| written by every sample | `latencySum` | atomic, own line | O4 |
+| under the lock | `window`, `consecutive`, `openLevel`, `probesInFlight`, history, other counters | `lock` | policy and transition state |
 
 Without `--threads:on` the lock is compiled out.
 
@@ -78,16 +89,23 @@ tests/
   t_concurrency.nim      # 8-thread stress (V3, S7, C1–C3)
   t_async.nim            # Y1
   t_keyed.nim            # N2
+  t_model.nim            # V2/Q5: model test with proptest (1000 random sequences)
+  t_latency.nim          # O4
+  t_prometheus.nim       # O6, B3
+  t_logs.nim             # O7
+  t_rejection.nim        # rejections: hints, deadline handover, real clock, 8 threads
+  t_lean_path.nim        # P2 differential test, F2 regressions
   t_cbdisabled.nim(s)    # N3, compiled with -d:cbDisabled
   compile_fail/          # programs that must NOT compile (Permit is not copyable)
 benchmarks/
   harness.nim            # warm-up, 30 samples, median/p95/p99, allocations, optional JSON
-  b_core.nim             # BM0, BM1, BM3, BM6, BM8, BM9
+  b_core.nim             # BM0, BM1, BM3, BM6, BM8, BM9, BM10 (O4), BM11 (O6), BM12 (O7)
   b_window.nim           # BM5
   b_threads.nim          # BM2
   b_keyed.nim            # BM7
 scripts/
-  check_traceability.nim # validates docs/TRACEABILITY.md against tests and benchmarks
+  check_traceability.nim # validates docs/TRACEABILITY.md against SPEC, tests and benchmarks
+  check_docs.nim         # every exported symbol has a doc comment (D3)
 ```
 
 Each test name cites the SPEC IDs it verifies (`test "S5: ..."`); the traceability script relies on these names ([ADR-0002](decisions/0002-evidence-policy.md)).
@@ -98,6 +116,7 @@ Each test name cites the SPEC IDs it verifies (`test "S5: ..."`); the traceabili
 nimble test            # all tests
 nimble bench           # benchmarks (timings with ORC, allocations with ARC, cbDisabled variant)
 nimble trace           # traceability matrix
+nimble doccheck        # public API documentation coverage
 nim doc --project --outdir:htmldocs src/circuit_breaker.nim
 ```
 

@@ -79,16 +79,38 @@ Legend: [x] done · [ ] pending · [~] deferred
 
 ## v0.4: async, documentation and platforms
 
-- [ ] Y2: Chronos support in a separate module
+Detailed plan, audit of gaps and open decisions: [`PLAN-v0.4.md`](PLAN-v0.4.md).
+
+Phase A, documentation debt:
+- [x] Matrix rows for D1–D8; `check_traceability` fails when a SPEC ID has no row
+- [x] D3: 100% of the public API documented (97 of 97), checked in CI (`nimble doccheck`)
+- [x] README updated for v0.3 (features, transition table, performance per SPEC 27.3 with the lowest of 8 runs, quality; ThreadSanitizer re-run on v0.3.0)
+
+Phase B, async:
+- [ ] Y2: Chronos support in a separate module (closes A5)
 - [ ] Y3: safety under `Future` cancellation
-- [ ] T5: per-call timeout (depends on Y3)
+- [ ] T5: per-call timeout for the async APIs (depends on Y3)
+
+Phase C, CI and evidence:
+- [ ] Q6: CI on macOS and Windows, Nim `devel`
+- [ ] Zero-warnings gate in the four build modes (v1.0 criterion 2)
+- [ ] README quickstart built in CI after `nimble install` (D1, v1.0 criterion 5)
+- [ ] Q7: code coverage
+- [ ] Nightly 1000 runs of the model and concurrency tests (v1.0 criterion 4)
+
+Phase D, performance gate:
+- [ ] R4: benchmark regression gate (base and PR measured interleaved in the same job, see SPEC 27.4)
+
+Phase E, documentation and examples:
 - [ ] D3: publish `nim doc` (GitHub Pages)
 - [ ] D4: parameter selection guide and pitfalls
-- [ ] D5: database and metrics examples
-- [ ] Q6: CI on macOS and Windows, Nim `devel`
-- [ ] Q7: code coverage
-- [ ] R4: benchmark regression gate (base and PR measured in the same job, see SPEC 27.4)
+- [ ] D5: database, metrics, fallback and Chronos examples
 - [ ] I4/D8: concept equivalence table with other languages
+
+Decisions:
+- [x] P2 (P0): amended by [ADR-0015](decisions/0015-lean-locked-path-for-windowed-policies.md) (D-1)
+- [x] `devel` informational, Windows and macOS blocking (D-2); coverage reported first (D-3); equivalence libraries chosen (D-6)
+- [ ] Owner: enable GitHub Pages (D-4) and file the upstream ORC issue (D-5)
 
 ## v1.0: acceptance criteria
 

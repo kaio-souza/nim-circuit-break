@@ -32,3 +32,6 @@ task bench, "Run the benchmark suite (BM1-BM9)":
 
 task trace, "Check the traceability matrix (EV1/EV2)":
   exec "nim r --hints:off scripts/check_traceability.nim"
+
+task doccheck, "Check that every exported symbol has a doc comment (D3)":
+  exec "nim r --hints:off scripts/check_docs.nim"

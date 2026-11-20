@@ -1,4 +1,5 @@
 ## Sliding windows with O(1) updates and fixed memory (F2, F3, P3).
+## Internal: used by the breaker; not part of the stable API.
 
 import types
 
@@ -8,6 +9,7 @@ type
     calls, failures, slow: int
 
   SlidingWindow* = object
+    ## Count or time window of call outcomes.
     calls, failures, slow: int
     case kind: WindowKind
     of CountWindow:
@@ -20,6 +22,7 @@ type
 
 proc initSlidingWindow*(kind: WindowKind; size: int; durationNs: int64;
                         buckets: int): SlidingWindow =
+  ## A window of `size` calls (count) or `durationNs` split in `buckets` (time).
   case kind
   of CountWindow:
     result = SlidingWindow(kind: CountWindow, flags: newSeq[uint8](size))
@@ -27,7 +30,9 @@ proc initSlidingWindow*(kind: WindowKind; size: int; durationNs: int64;
     result = SlidingWindow(kind: TimeWindow, buckets: newSeq[TimeBucket](buckets),
                            bucketNanos: max(1'i64, durationNs div buckets))
 
-proc kind*(w: SlidingWindow): WindowKind {.inline.} = w.kind
+proc kind*(w: SlidingWindow): WindowKind {.inline.} =
+  ## Count or time window.
+  w.kind
 
 proc expire(w: var SlidingWindow; now: int64) {.inline.} =
   ## Clears only the slots of the epochs that passed since the last call:
@@ -70,6 +75,7 @@ proc add*(w: var SlidingWindow; now: int64; failed, slow: bool) =
   if slow: inc w.slow
 
 proc stats*(w: var SlidingWindow; now: int64): WindowStats =
+  ## Totals and rates at `now` (expires old time buckets first).
   if w.kind == TimeWindow: w.expire(now)
   result = WindowStats(calls: w.calls, failures: w.failures, slowCalls: w.slow)
   if w.calls > 0:
@@ -77,6 +83,7 @@ proc stats*(w: var SlidingWindow; now: int64): WindowStats =
     result.slowCallRate = w.slow / w.calls
 
 proc clear*(w: var SlidingWindow) =
+  ## Forgets every recorded call.
   w.calls = 0
   w.failures = 0
   w.slow = 0

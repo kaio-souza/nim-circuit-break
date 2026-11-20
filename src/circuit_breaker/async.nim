@@ -19,4 +19,5 @@ proc callAsync*[T](cb: CircuitBreaker; fn: proc(): Future[T]): Future[T] {.async
   p.success()
 
 proc callAsync*(cb: CircuitBreaker; fn: proc(): Future[void]): Future[void] =
+  ## `callAsync` for a `fn` without a result.
   callAsync[void](cb, fn)

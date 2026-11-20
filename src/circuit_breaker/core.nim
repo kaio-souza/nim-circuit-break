@@ -56,6 +56,8 @@ type
     historyNext: int
 
   CircuitBreaker* = ref CircuitBreakerObj
+    ## A circuit breaker. Create with `newCircuitBreaker`; safe to share between
+    ## threads. Must outlive the `Permit`s it grants.
   BreakerPtr = ptr CircuitBreakerObj
 
   Permit* = object
@@ -237,12 +239,15 @@ proc recordForgotten(p: Permit) {.noinline.} =
   p.cb.recordCore(p.gen, p.startNs, p.probe, p.shadow, countAsFailure())
 
 proc `=destroy`*(p: Permit) {.inline.} =
+  ## Records a failure if the permit goes out of scope without an outcome (E2).
   # Inlined so that the common case (outcome recorded, or no permit granted)
   # is two loads and a branch.
   if not p.done and not p.cb.isNil: recordForgotten(p)
 
 proc `=copy`*(dst: var Permit; src: Permit) {.error: "a Permit cannot be copied".}
+  ## A permit cannot be copied: each grant has exactly one outcome.
 proc `=dup`*(src: Permit): Permit {.error: "a Permit cannot be copied".}
+  ## A permit cannot be duplicated: each grant has exactly one outcome.
 
 # --------------------------------------------------------------- acquire
 
@@ -498,10 +503,16 @@ proc record*(p: var Permit; v: Verdict) =
     return
   b.recordCore(p.gen, p.startNs, p.probe, p.shadow, v)
 
-proc success*(p: var Permit) {.inline.} = p.record(countAsSuccess())
+proc success*(p: var Permit) {.inline.} =
+  ## Records the guarded call as a success.
+  p.record(countAsSuccess())
 proc failure*(p: var Permit; openFor = Duration()) {.inline.} =
+  ## Records the guarded call as a failure. A positive `openFor` (for example
+  ## from a `Retry-After` header) opens the circuit for that long.
   p.record(countAsFailure(openFor))
-proc ignore*(p: var Permit) {.inline.} = p.record(ignoreCall())
+proc ignore*(p: var Permit) {.inline.} =
+  ## Releases the permit without counting the call either way.
+  p.record(ignoreCall())
 
 proc recordError*(p: var Permit; e: ref CatchableError) =
   ## Records an exception, using the configured classifier (F5, F6).
@@ -515,11 +526,15 @@ proc recordError*(p: var Permit; e: ref CatchableError) =
       discard p.cb.callbackErrors.fetchAdd(1)
   p.record(v)
 
-proc isProbe*(p: Permit): bool {.inline.} = p.probe
+proc isProbe*(p: Permit): bool {.inline.} =
+  ## True when the permit is a `HalfOpen` probe: its outcome decides recovery.
+  p.probe
 proc isShadow*(p: Permit): bool {.inline.} =
   ## True when the call would have been rejected but shadow mode let it pass.
   p.shadow
-proc isDone*(p: Permit): bool {.inline.} = p.done
+proc isDone*(p: Permit): bool {.inline.} =
+  ## True once an outcome was recorded (later records are no-ops).
+  p.done
 
 # -------------------------------------------------------------- call API
 
@@ -567,7 +582,10 @@ proc call*[T](cb: CircuitBreaker; fn: proc(): T; isFailureResult: proc(x: T): bo
 
 type
   CallResultKind* = enum
-    crOk, crRejected, crFailed
+    ## Outcome of `tryCall`.
+    crOk        ## `fn` ran and succeeded; `value` holds its result.
+    crRejected  ## The breaker rejected the call; see `rejection`.
+    crFailed    ## `fn` raised; see `error`.
 
   CallResult*[T] = object
     ## Explicit result of `tryCall` (A3).
@@ -577,7 +595,9 @@ type
     rejection*: ref CircuitOpenError
     error*: ref CatchableError
 
-proc isOk*[T](r: CallResult[T]): bool {.inline.} = r.kind == crOk
+proc isOk*[T](r: CallResult[T]): bool {.inline.} =
+  ## True when the call ran and succeeded.
+  r.kind == crOk
 
 proc tryCall*[T](cb: CircuitBreaker; fn: proc(): T): CallResult[T] =
   ## Never raises `CatchableError`: the outcome is in the result.
@@ -595,6 +615,7 @@ proc tryCall*[T](cb: CircuitBreaker; fn: proc(): T): CallResult[T] =
     result.error = e
 
 proc tryCall*(cb: CircuitBreaker; fn: proc()): CallResult[void] =
+  ## `tryCall` for a `fn` without a result.
   tryCall[void](cb, fn)
 
 proc callOr*[T](cb: CircuitBreaker; fn: proc(): T;
@@ -613,6 +634,7 @@ proc callOr*[T](cb: CircuitBreaker; fn: proc(): T;
       result = fallback(e)
 
 proc callOr*(cb: CircuitBreaker; fn: proc(); fallback: proc(e: ref CatchableError)) =
+  ## `callOr` for a `fn` without a result.
   callOr[void](cb, fn, fallback)
 
 template withBreaker*(cb: CircuitBreaker; body: untyped) =
@@ -635,17 +657,26 @@ template withBreaker*(cb: CircuitBreaker; body: untyped) =
 
 # ------------------------------------------------------- inspection / control
 
-proc name*(cb: CircuitBreaker): string = cb.cfg.name
+proc name*(cb: CircuitBreaker): string =
+  ## The breaker's name, as used in errors, events and metrics.
+  cb.cfg.name
 
 proc state*(cb: CircuitBreaker): CircuitState =
   ## Current state. `Open` is reported until a call triggers `HalfOpen` (S4).
   (addr cb[]).loadState().state
 
-proc isClosed*(cb: CircuitBreaker): bool = cb.state == Closed
-proc isOpen*(cb: CircuitBreaker): bool = cb.state in {Open, ForcedOpen}
-proc isHalfOpen*(cb: CircuitBreaker): bool = cb.state == HalfOpen
+proc isClosed*(cb: CircuitBreaker): bool =
+  ## True in `Closed`.
+  cb.state == Closed
+proc isOpen*(cb: CircuitBreaker): bool =
+  ## True in `Open` or `ForcedOpen`.
+  cb.state in {Open, ForcedOpen}
+proc isHalfOpen*(cb: CircuitBreaker): bool =
+  ## True in `HalfOpen`.
+  cb.state == HalfOpen
 
 proc config*(cb: CircuitBreaker): BreakerConfig =
+  ## A copy of the current configuration.
   let b = addr cb[]
   locked(b):
     result = b.cfg
@@ -674,13 +705,17 @@ proc metrics*(cb: CircuitBreaker): BreakerMetrics =
       result.latencyCount += c
   result.callbackErrors = b.callbackErrors.load(moAcquire)
 
-proc consecutiveFailures*(cb: CircuitBreaker): int = cb.metrics.consecutiveFailures
+proc consecutiveFailures*(cb: CircuitBreaker): int =
+  ## Failures in a row counted in `Closed`.
+  cb.metrics.consecutiveFailures
 
 proc latencyQuantile*(m: BreakerMetrics; p: float): Duration =
   ## O4: the `p`-quantile of the call latency (0 < p <= 1), within 1/k relative
   ## error, where k is `latencyPrecision`. Zero when tracking is off or empty.
   initDuration(nanoseconds = latencyPercentile(m.latencyBuckets, m.latencyPrecision, p))
-proc retryAfter*(cb: CircuitBreaker): Duration = cb.metrics.retryAfter
+proc retryAfter*(cb: CircuitBreaker): Duration =
+  ## Time until the next probe while `Open`; zero in the other states.
+  cb.metrics.retryAfter
 
 proc explain*(cb: CircuitBreaker): seq[TransitionEvent] =
   ## Last transitions, oldest first, with reason and window statistics (B4).
@@ -704,8 +739,12 @@ proc manualTransition(cb: CircuitBreaker; to: CircuitState) =
 proc reset*(cb: CircuitBreaker) =
   ## Closes the circuit and clears counters of the window (A10).
   manualTransition(cb, Closed)
-proc forceOpen*(cb: CircuitBreaker) = manualTransition(cb, ForcedOpen)
-proc disable*(cb: CircuitBreaker) = manualTransition(cb, Disabled)
+proc forceOpen*(cb: CircuitBreaker) =
+  ## Rejects every call until `reset` (A10), e.g. during maintenance.
+  manualTransition(cb, ForcedOpen)
+proc disable*(cb: CircuitBreaker) =
+  ## Lets every call through without evaluating outcomes until `reset` (A10).
+  manualTransition(cb, Disabled)
 
 proc reconfigure*(cb: CircuitBreaker; cfg: BreakerConfig) =
   ## Atomically replaces the numeric settings (N4). `name`, `clock`,

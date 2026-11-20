@@ -6,10 +6,12 @@
 import std/[math, bitops]
 
 const
-  maxLatencyPrecision* = 8
+  maxLatencyPrecision* = 8  ## Largest accepted `latencyPrecision`.
   maxOctave = 62  # ns values are int64 and non-negative, so octave <= 62
 
-proc latencyBucketCount*(k: int): int {.inline.} = (maxOctave + 1) * k
+proc latencyBucketCount*(k: int): int {.inline.} =
+  ## Number of buckets of a histogram with precision `k`.
+  (maxOctave + 1) * k
 
 proc latencyBucketOf*(ns: int64; k: int): int {.inline.} =
   ## Bucket index of a duration in nanoseconds (non-positive values go to 0).

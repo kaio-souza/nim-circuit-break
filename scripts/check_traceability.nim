@@ -55,6 +55,17 @@ for id in testedIds:
   if id notin rows:
     problems.add id & ": cited by a test but missing from TRACEABILITY.md"
 
+# Every requirement of the SPEC (a table row "| ID | P0 |") needs a matrix row,
+# so a requirement can never be silently left out of the evidence.
+for line in readFile(root / "docs" / "SPEC.md").splitLines:
+  let cols = line.split('|')
+  if cols.len < 4: continue
+  let id = cols[1].strip
+  let pri = cols[2].strip
+  if id.isId and pri.len == 2 and pri[0] == 'P' and pri[1] in {'0'..'9'} and
+     id notin rows:
+    problems.add id & ": in SPEC.md but missing from TRACEABILITY.md"
+
 if problems.len > 0:
   echo "Traceability check FAILED:"
   for p in problems: echo "  - ", p

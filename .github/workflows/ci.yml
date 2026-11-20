@@ -57,3 +57,6 @@ jobs:
 
       - name: Traceability matrix (EV1/EV2)
         run: nim r --hints:off scripts/check_traceability.nim
+
+      - name: Public API fully documented (D3)
+        run: nim r --hints:off scripts/check_docs.nim

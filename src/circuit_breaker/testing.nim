@@ -16,12 +16,16 @@ type
     ## Manually driven monotonic clock. Thread-safe.
 
 proc newFakeClock*(start = 1_000_000_000'i64): FakeClock =
+  ## A fake clock starting at `start` nanoseconds; it only moves with `advance`.
   result = FakeClock()
   result.nanos.store(start)
 
-proc now*(c: FakeClock): int64 = c.nanos.load(moAcquire)
+proc now*(c: FakeClock): int64 =
+  ## Current time in nanoseconds.
+  c.nanos.load(moAcquire)
 
 proc advance*(c: FakeClock; d: Duration) =
+  ## Moves the clock forward by `d`.
   discard c.nanos.fetchAdd(d.inNanoseconds, moAcquireRelease)
 
 proc source*(c: FakeClock): Clock =

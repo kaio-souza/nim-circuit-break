@@ -12,15 +12,20 @@ type
     Disabled    ## Administrative: every call passes and nothing is evaluated.
 
   PolicyKind* = enum
+    ## How `Closed` decides to open.
     ConsecutiveFailures  ## Opens after `failureThreshold` failures in a row.
     FailureRate          ## Opens when the failure rate of the window crosses a threshold.
 
   WindowKind* = enum
+    ## Shape of the sliding window used by the rate policies.
     CountWindow  ## The last `windowSize` calls.
     TimeWindow   ## Calls of the last `windowDuration`, split in `windowBuckets`.
 
   VerdictKind* = enum
-    vkSuccess, vkFailure, vkIgnore
+    ## How a call outcome counts.
+    vkSuccess  ## Counts as a success.
+    vkFailure  ## Counts as a failure.
+    vkIgnore   ## Not counted (e.g. a caller error).
 
   Verdict* = object
     ## How a call outcome must be counted.
@@ -28,6 +33,7 @@ type
     openFor*: Duration  ## Only for failures: server hint (e.g. `Retry-After`). Zero means none.
 
   TransitionReason* = enum
+    ## Why a transition happened; `$` gives a readable text.
     trConsecutiveFailures = "consecutive failure threshold reached"
     trFailureRate = "failure rate threshold reached"
     trSlowCallRate = "slow call rate threshold reached"
@@ -38,6 +44,7 @@ type
     trManual = "manual operation"
 
   WindowStats* = object
+    ## Snapshot of the sliding window.
     calls*: int
     failures*: int
     slowCalls*: int
@@ -45,6 +52,7 @@ type
     slowCallRate*: float ## 0.0 .. 1.0
 
   TransitionEvent* = object
+    ## Passed to `onTransition` and kept by `explain`.
     breaker*: string
     fromState*: CircuitState
     toState*: CircuitState
@@ -55,9 +63,15 @@ type
     atNanos*: int64             ## Monotonic timestamp (nanoseconds).
 
   CallOutcome* = enum
-    coSuccess, coFailure, coIgnored, coRejected, coShadowRejected
+    ## Outcome reported to `onCall`.
+    coSuccess         ## Ran and counted as a success.
+    coFailure         ## Ran and counted as a failure.
+    coIgnored         ## Ran and was not counted.
+    coRejected        ## Rejected by the breaker.
+    coShadowRejected  ## Would have been rejected; let through by shadow mode.
 
   CallEvent* = object
+    ## Passed to `onCall` after every call or rejection.
     breaker*: string
     outcome*: CallOutcome
     slow*: bool
@@ -74,8 +88,12 @@ type
   Clock* = proc(): int64 {.gcsafe, raises: [].}
     ## Monotonic time source in nanoseconds.
   ErrorClassifier* = proc(e: ref CatchableError): Verdict
+    ## Decides how an exception raised by the call counts (F5).
   TransitionCallback* = proc(e: TransitionEvent)
+    ## Called outside the lock after each transition (ADR-0007).
   CallCallback* = proc(e: CallEvent)
+    ## Called outside the lock after each call; makes every success take the
+    ## general path, so it costs more than a plain call.
 
   BreakerConfig* = object
     ## Configuration. Build with `initBreakerConfig`; validated by `newCircuitBreaker`.
@@ -109,6 +127,7 @@ type
     seed*: int64                      ## Jitter seed; 0 picks one from the clock.
 
   BreakerMetrics* = object
+    ## Immutable snapshot returned by `metrics` (B2).
     name*: string
     state*: CircuitState
     successes*: int64
@@ -129,10 +148,16 @@ type
     latencyBuckets*: seq[int64]    ## Histogram counts; see `latencyPercentile`.
     latencySumNs*: int64          ## Sum of the sampled latencies.
 
-proc countAsSuccess*(): Verdict {.inline.} = Verdict(kind: vkSuccess)
+proc countAsSuccess*(): Verdict {.inline.} =
+  ## Verdict: the call counts as a success.
+  Verdict(kind: vkSuccess)
 proc countAsFailure*(openFor = Duration()): Verdict {.inline.} =
+  ## Verdict: the call counts as a failure; a positive `openFor` opens the
+  ## circuit for that long (server hint).
   Verdict(kind: vkFailure, openFor: openFor)
-proc ignoreCall*(): Verdict {.inline.} = Verdict(kind: vkIgnore)
+proc ignoreCall*(): Verdict {.inline.} =
+  ## Verdict: the call is not counted.
+  Verdict(kind: vkIgnore)
 
 proc initBreakerConfig*(
     name = "default",

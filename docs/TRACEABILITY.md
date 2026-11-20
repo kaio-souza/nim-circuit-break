@@ -61,7 +61,7 @@ Script rules:
 | C5 | No lock without threads | done | CI | n/a | `when compileOption("threads")` |
 | C6 | No global state | done | CI | n/a | |
 | P1 | Zero allocation in Closed | done | CI | BM1 | 0.00 alloc/op |
-| P2 | Lock-free Closed | partial | t_lean_path | BM1 | lock-free with the consecutive policy; `FailureRate` takes a lean locked path (no event bookkeeping) |
+| P2 | Lock-free Closed | done | t_lean_path | BM1 | scope amended by [ADR-0015](decisions/0015-lean-locked-path-for-windowed-policies.md): lock-free for the consecutive policy, lean locked path for windowed policies |
 | P3 | O(1) window | done | CI | BM5 | |
 | P4 | No closure per call | done | CI | BM6 | |
 | P5 | False-sharing padding | done | CI | BM2 | hot groups 64 bytes apart, compile-time `offsetOf` checks; -31 to -45% per call at 2 to 8 threads |
@@ -80,6 +80,14 @@ Script rules:
 | Q6 | Multi-platform CI | partial | CI | n/a | Linux only for now (SPEC 27.5) |
 | Q7 | Coverage | deferred | | | |
 | Q8 | Examples compiled in CI | done | CI | n/a | |
+| D1 | README in one language, quickstart via `nimble install` | partial | CI | n/a | README in English; quickstart not yet built in CI after `nimble install` (v0.4 phase C) |
+| D2 | State diagram and transition table | done | CI | n/a | README "States": diagram and transition table; SPEC §12 |
+| D3 | Doc comments on the public API, published `nim doc` | partial | CI | n/a | 97 of 97 exported symbols documented, checked by `scripts/check_docs.nim` in CI; not yet published (Pages, D-4) |
+| D4 | Parameter guide and pitfalls | pending | | | v0.4 phase E |
+| D5 | Examples: HTTP, database, async, fallback, metrics | partial | CI | n/a | HTTP, async, composition compiled in CI; database, metrics, fallback missing (v0.4 phase E) |
+| D6 | CHANGELOG and semantic versioning | done | CI | n/a | `CHANGELOG.md`; tags v0.2.0, v0.3.0 |
+| D7 | LICENSE, `.gitignore`, git repository | done | CI | n/a | `LICENSE` (MIT), `.gitignore` excludes binaries |
+| D8 | Concept and parameter mapping to other languages | pending | | | = I4, v0.4 phase E |
 | E1 | `call`/`tryCall`/`callOr` | done | t_api | BM1 | |
 | E2 | RAII guard | done | t_api, t_values | BM6 | |
 | E3 | `withBreaker` | done | t_api | BM6 | |

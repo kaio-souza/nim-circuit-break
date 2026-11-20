@@ -16,8 +16,11 @@ type
     breaker: CircuitBreaker
 
   ConfigFactory*[K] = proc(key: K): BreakerConfig
+    ## Builds the configuration of the breaker for a new key.
 
   KeyedBreaker*[K] = ref object
+    ## One breaker per key, created on demand, with a capacity cap and LRU
+    ## eviction (N2, ADR-0011).
     lock: Lock
     capacity: int
     configFor: ConfigFactory[K]
@@ -66,14 +69,17 @@ proc get*[K](kb: KeyedBreaker[K]; key: K): CircuitBreaker =
         inc kb.evictions
 
 proc contains*[K](kb: KeyedBreaker[K]; key: K): bool =
+  ## True when `key` has a live breaker (not created, not evicted).
   withLock(kb):
     result = key in kb.index
 
 proc len*[K](kb: KeyedBreaker[K]): int =
+  ## Number of live breakers.
   withLock(kb):
     result = kb.index.len
 
 proc evictions*[K](kb: KeyedBreaker[K]): int =
+  ## Breakers evicted so far to respect the capacity; use it to tune the cap.
   withLock(kb):
     result = kb.evictions
 
@@ -82,4 +88,5 @@ proc call*[K, T](kb: KeyedBreaker[K]; key: K; fn: proc(): T): T =
   kb.get(key).call(fn)
 
 proc call*[K](kb: KeyedBreaker[K]; key: K; fn: proc()) =
+  ## Runs `fn` (without a result) under the breaker of `key`.
   kb.get(key).call(fn)

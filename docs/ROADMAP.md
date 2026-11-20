@@ -60,8 +60,8 @@ Legend: [x] done · [ ] pending · [~] deferred
 - [ ] First commit and push to GitHub
 - [ ] First real CI run (validates the `nimlang/nim:2.2.4` image and `nimble test` with a commit)
 - [x] Replace `<repository-url>` in the README with the real URL
-- [ ] Tag `v0.2.0` and date it in the CHANGELOG
-- [ ] Publish to the `nim-lang/packages` index (name `circuit_breaker`, tags in `packages.json`)
+- [x] Tag `v0.2.0` and date it in the CHANGELOG
+- [~] Publish to the `nim-lang/packages` index (name `circuit_breaker`, tags in `packages.json`): deferred until the library is more mature; installing from the git URL and tag works meanwhile
 
 ## v0.3: close performance and proof gaps
 

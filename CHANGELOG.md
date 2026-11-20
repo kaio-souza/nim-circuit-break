@@ -2,7 +2,7 @@
 
 All notable changes. Versions follow semantic versioning.
 
-## 0.2.0 (unreleased)
+## 0.2.0 - 2026-11-20
 
 Rewrite of the library. The 0.1 API (`call` returning `Option[T]`, public
 `transitionTo`) is not compatible.

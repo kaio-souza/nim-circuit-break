@@ -39,8 +39,30 @@ vary by 2x.
 | D-4 | `nim doc` published on GitHub Pages | Owner enables Pages in the repository settings (source: GitHub Actions) |
 | D-5 | Upstream ORC issue filed by the owner after review | Owner action |
 | D-6 | Equivalence table covers Resilience4j, Polly, gobreaker, pybreaker and opossum, checked against their current docs | Phase E |
+| D-7 | No dedicated fuzzing library: ThreadSanitizer in CI (P1), libFuzzer harness against the model without a library (P2) | [ADR-0017](decisions/0017-fuzzing-without-a-dedicated-library.md) |
 
-## 3. Phases
+## 3. Priorities (revised 2026-11-20)
+
+Phases A and B are done. The remaining work is ranked below; the phases in
+section 4 describe each item.
+
+| Priority | Item | Status / scope | Phase |
+|---|---|---|---|
+| P0 | Multi-platform CI: Linux, Windows, macOS (+ `devel` informational) | Linux only; `std/posix` and thread tests are the risks | C1 |
+| P0 | Quickstart validated through `nimble install` in CI | release blocker: a broken install is the first thing a user sees | C3 |
+| P0 | Concurrency and state coverage: nightly 1000 runs of `t_model` and `t_concurrency`, coverage report | criterion 4, Q7 | C4, C5 |
+| P0 | Close Chronos: example, Chronos pinned in CI, Chronos tests on the new platforms | Y2, Y3, T5, A5 already done | B, E3 |
+| P1 | Warnings gate | small, belongs with the CI work | C2 |
+| P1 | ThreadSanitizer job for the concurrency tests (Linux, clang) | main remaining risk is concurrency; ADR-0017 | C |
+| P1 | Composition docs: link from README, cancellation and `callTimeout` sections | `docs/COMPOSITION.md` exists | E |
+| P1 | Examples: HTTP (exists), PostgreSQL (connection pool), Redis | D5 | E3 |
+| P1 | Performance gate `nimble benchcheck` | v1.0 exit criterion (R4) | D |
+| P1 | `docs/TUNING.md` | D4, P0 doc requirement for v1.0 | E2 |
+| P2 | OpenTelemetry integration (B5), as a separate module, no core dependency | | post-v1.0 candidate |
+| P2 | Examples with Nim servers (Jester/Prologue/HappyX, Chronos HTTP) | | E3 |
+| P2 | State-machine fuzzing (V4): libFuzzer harness in `tests/fuzz/` against the model, nightly; no dedicated library | [ADR-0017](decisions/0017-fuzzing-without-a-dedicated-library.md) | after C5 |
+
+## 4. Phases
 
 The phases are ordered by dependency. A and C can overlap; B before the async
 examples of E; D needs the CI work of C.
@@ -139,7 +161,7 @@ examples of E; D needs the CI work of C.
   the development machine) and mark it done if it holds on the README machine.
 - Keep the Post-1.0 list unchanged (Y4, N12, B5 and the rest).
 
-## 4. Exit criteria
+## 5. Exit criteria
 
 - Every P0 and P1 requirement done, or amended by an accepted ADR (D-1).
 - Matrix covers every SPEC ID, checked in CI.

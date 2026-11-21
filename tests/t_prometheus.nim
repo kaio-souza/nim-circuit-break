@@ -110,6 +110,7 @@ suite "Prometheus exposition (O6/B3)":
 
   test "B3: the core does not depend on the exporter":
     let root = currentSourcePath().parentDir.parentDir / "src" / "circuit_breaker"
-    for f in ["types.nim", "core.nim", "window.nim", "latency.nim", "keyed.nim", "async.nim"]:
+    for f in ["types.nim", "core.nim", "calls.nim", "report.nim", "private/window.nim",
+              "private/latency.nim", "private/sync.nim", "keyed.nim", "async.nim"]:
       let src = readFile(root / f)
       check "prometheus" notin src.toLowerAscii

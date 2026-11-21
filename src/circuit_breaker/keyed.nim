@@ -5,10 +5,8 @@
 ## compile with `--mm:atomicArc` and keep each returned breaker referenced
 ## while it is in use.
 
-import std/[tables, lists, locks]
-import types, core
-
-const threadsOn = compileOption("threads")
+import std/[tables, lists]
+import types, core, calls, private/sync
 
 type
   Entry[K] = object
@@ -34,17 +32,10 @@ proc newKeyedBreaker*[K](capacity: int; configFor: ConfigFactory[K]): KeyedBreak
   if capacity < 1:
     raise newException(ValueError, "capacity must be >= 1")
   result = KeyedBreaker[K](capacity: capacity, configFor: configFor)
-  when threadsOn: initLock(result.lock)
+  initLockIfThreads(result.lock)
 
 template withLock(kb: KeyedBreaker; body: untyped) =
-  when threadsOn:
-    acquire(kb.lock)
-    try:
-      body
-    finally:
-      release(kb.lock)
-  else:
-    body
+  withLockIfThreads(kb.lock, body)
 
 proc get*[K](kb: KeyedBreaker[K]; key: K): CircuitBreaker =
   ## Returns the breaker of `key`, creating it if needed.

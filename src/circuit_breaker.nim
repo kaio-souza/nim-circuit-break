@@ -16,5 +16,7 @@
 ## `circuit_breaker/keyed` (one breaker per key) and
 ## `circuit_breaker/testing` (`FakeClock`).
 
-import circuit_breaker/[types, core]
-export types, core
+import circuit_breaker/[types, core, calls, report]
+export types, calls, report
+# `newCallTimeoutError` is for the async modules, not for applications.
+export core except newCallTimeoutError

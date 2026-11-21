@@ -7,12 +7,10 @@
 ## A `CircuitBreaker` must outlive the permits it grants, so in multi-threaded
 ## code keep it in a global or another long-lived owner.
 
-import std/[times, monotimes, atomics, random, locks, math, strutils, strformat]
-import types, window, latency
+import std/[times, monotimes, atomics, random, math]
+import types, private/[window, latency, sync]
 
 export types
-
-const threadsOn = compileOption("threads")
 
 type
   CircuitBreakerObj = object
@@ -85,14 +83,7 @@ static:
 # ---------------------------------------------------------------- helpers
 
 template locked(b: BreakerPtr; body: untyped) =
-  when threadsOn:
-    acquire(b.lock)
-    try:
-      body
-    finally:
-      release(b.lock)
-  else:
-    body
+  withLockIfThreads(b.lock, body)
 
 when defined(linux):
   import std/posix
@@ -148,7 +139,7 @@ proc newCircuitBreaker*(cfg: BreakerConfig): CircuitBreaker =
   validate(cfg)
   result = CircuitBreaker(cfg: cfg)
   let b = addr result[]
-  when threadsOn: initLock(b.lock)
+  initLockIfThreads(b.lock)
   b.window = newWindow(cfg)
   b.rng = initRand(if cfg.seed != 0: cfg.seed else: getMonoTime().ticks)
   b.currentOpenNs = cfg.openTimeout.nanos
@@ -233,6 +224,19 @@ proc dispatch(b: BreakerPtr; p: var Pending) =
 
 proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
                 v: Verdict) {.raises: [].}
+
+proc rateTripLocked(b: BreakerPtr; now, slowNs: int64;
+                    reason: var TransitionReason): bool {.inline.} =
+  ## The rate policies of `Closed` (failure rate, slow-call rate), in one
+  ## place for every recording path. True when the circuit must open.
+  let st = b.window.stats(now)
+  if st.calls < b.cfg.minimumCalls: return false
+  if b.cfg.policy == FailureRate and st.failureRate >= b.cfg.failureRateThreshold:
+    reason = trFailureRate
+    return true
+  if slowNs > 0 and st.slowCallRate >= b.cfg.slowCallRateThreshold:
+    reason = trSlowCallRate
+    return true
 
 proc recordForgotten(p: Permit) {.noinline.} =
   ## Cold path: the permit went out of scope without an outcome.
@@ -412,15 +416,10 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
                  b.consecutive >= b.cfg.failureThreshold:
               b.transitionLocked(Open, trConsecutiveFailures, now, p)
             else:
-              let st = b.window.stats(now)
-              if st.calls >= b.cfg.minimumCalls:
-                if b.cfg.policy == FailureRate and
-                   st.failureRate >= b.cfg.failureRateThreshold:
-                  # a success may trip here without having read the clock
-                  b.transitionLocked(Open, trFailureRate,
-                                     (if needNow: now else: b.nowNs()), p)
-                elif slowNs > 0 and st.slowCallRate >= b.cfg.slowCallRateThreshold:
-                  b.transitionLocked(Open, trSlowCallRate, now, p)
+              var reason: TransitionReason
+              if b.rateTripLocked(now, slowNs, reason):
+                # a success may trip here without having read the clock
+                b.transitionLocked(Open, reason, (if needNow: now else: b.nowNs()), p)
         of HalfOpen:
           if probe:
             dec b.probesInFlight
@@ -457,8 +456,8 @@ proc tripLocked(b: BreakerPtr; reason: TransitionReason; now: int64) {.noinline.
 proc recordSuccessLean(b: BreakerPtr; gen: int; startNs: int64) =
   ## P2: a success that must go through the lock (sliding window, slow-call
   ## detection) when no callback is set. Same decisions as the Closed branch
-  ## of `recordCore` for a success, without its event bookkeeping, which cost
-  ## more than the lock itself.
+  ## of `recordCore` for a success (both use `rateTripLocked`), without its
+  ## event bookkeeping, which cost more than the lock itself.
   locked(b):
     let needNow = startNs > 0 or (b.window.kind == TimeWindow and b.cfg.tracksWindow)
     let now = if needNow: b.nowNs() else: 0'i64
@@ -472,13 +471,9 @@ proc recordSuccessLean(b: BreakerPtr; gen: int; startNs: int64) =
     if s == Closed and gen == curGen:
       if b.cfg.tracksWindow: b.window.add(now, false, slow)
       b.setConsecutive(0)
-      let st = b.window.stats(now)
-      if st.calls >= b.cfg.minimumCalls:
-        if b.cfg.policy == FailureRate and
-           st.failureRate >= b.cfg.failureRateThreshold:
-          b.tripLocked(trFailureRate, if needNow: now else: b.nowNs())
-        elif slowNs > 0 and st.slowCallRate >= b.cfg.slowCallRateThreshold:
-          b.tripLocked(trSlowCallRate, if needNow: now else: b.nowNs())
+      var reason: TransitionReason
+      if b.rateTripLocked(now, slowNs, reason):
+        b.tripLocked(reason, if needNow: now else: b.nowNs())
 
 proc record*(p: var Permit; v: Verdict) =
   ## Records the outcome of the call guarded by `p`. Later calls are no-ops.
@@ -536,125 +531,6 @@ proc isDone*(p: Permit): bool {.inline.} =
   ## True once an outcome was recorded (later records are no-ops).
   p.done
 
-# -------------------------------------------------------------- call API
-
-proc call*[T](cb: CircuitBreaker; fn: proc(): T): T =
-  ## Runs `fn` under the breaker (E1). Raises `CircuitOpenError` when rejected;
-  ## failures of `fn` propagate unchanged (A1, A2). `Defect`s propagate and
-  ## are not counted (F8).
-  when defined(cbDisabled):
-    when T is void: fn() else: return fn()
-  else:
-    var p = acquire(cb)
-    try:
-      when T is void:
-        fn()
-      else:
-        result = fn()
-    except CatchableError as e:
-      p.recordError(e)
-      raise
-    except Defect:
-      p.ignore()
-      raise
-    p.success()
-
-proc call*(cb: CircuitBreaker; fn: proc()) =
-  ## `call` for procs without a return value (A4).
-  call[void](cb, fn)
-
-proc call*[T](cb: CircuitBreaker; fn: proc(): T; isFailureResult: proc(x: T): bool): T =
-  ## Like `call`, but a returned value can also count as a failure (F7).
-  ## The value is still returned to the caller.
-  when defined(cbDisabled):
-    return fn()
-  else:
-    var p = acquire(cb)
-    try:
-      result = fn()
-    except CatchableError as e:
-      p.recordError(e)
-      raise
-    except Defect:
-      p.ignore()
-      raise
-    if isFailureResult(result): p.failure() else: p.success()
-
-type
-  CallResultKind* = enum
-    ## Outcome of `tryCall`.
-    crOk        ## `fn` ran and succeeded; `value` holds its result.
-    crRejected  ## The breaker rejected the call; see `rejection`.
-    crFailed    ## `fn` raised; see `error`.
-
-  CallResult*[T] = object
-    ## Explicit result of `tryCall` (A3).
-    kind*: CallResultKind
-    when T isnot void:
-      value*: T
-    rejection*: ref CircuitOpenError
-    error*: ref CatchableError
-
-proc isOk*[T](r: CallResult[T]): bool {.inline.} =
-  ## True when the call ran and succeeded.
-  r.kind == crOk
-
-proc tryCall*[T](cb: CircuitBreaker; fn: proc(): T): CallResult[T] =
-  ## Never raises `CatchableError`: the outcome is in the result.
-  try:
-    when T is void:
-      cb.call(fn)
-    else:
-      result.value = cb.call(fn)
-    result.kind = crOk
-  except CircuitOpenError as e:
-    result.kind = crRejected
-    result.rejection = e
-  except CatchableError as e:
-    result.kind = crFailed
-    result.error = e
-
-proc tryCall*(cb: CircuitBreaker; fn: proc()): CallResult[void] =
-  ## `tryCall` for a `fn` without a result.
-  tryCall[void](cb, fn)
-
-proc callOr*[T](cb: CircuitBreaker; fn: proc(): T;
-                fallback: proc(e: ref CatchableError): T): T =
-  ## Runs `fallback` when the call is rejected or fails (A6). The fallback
-  ## receives the `CircuitOpenError` or the original exception.
-  try:
-    when T is void:
-      cb.call(fn)
-    else:
-      result = cb.call(fn)
-  except CatchableError as e:
-    when T is void:
-      fallback(e)
-    else:
-      result = fallback(e)
-
-proc callOr*(cb: CircuitBreaker; fn: proc(); fallback: proc(e: ref CatchableError)) =
-  ## `callOr` for a `fn` without a result.
-  callOr[void](cb, fn, fallback)
-
-template withBreaker*(cb: CircuitBreaker; body: untyped) =
-  ## Runs `body` under the breaker without allocating a closure (E3).
-  ## Leaving `body` normally, or through `return`/`break`, counts as success.
-  when defined(cbDisabled):
-    body
-  else:
-    var permit = acquire(cb)
-    try:
-      body
-    except CatchableError as e:
-      permit.recordError(e)
-      raise
-    except Defect:
-      permit.ignore()
-      raise
-    finally:
-      if not permit.isDone: permit.success()
-
 # ------------------------------------------------------- inspection / control
 
 proc name*(cb: CircuitBreaker): string =
@@ -707,7 +583,9 @@ proc metrics*(cb: CircuitBreaker): BreakerMetrics =
 
 proc consecutiveFailures*(cb: CircuitBreaker): int =
   ## Failures in a row counted in `Closed`.
-  cb.metrics.consecutiveFailures
+  let b = addr cb[]
+  locked(b):
+    result = b.consecutive
 
 proc latencyQuantile*(m: BreakerMetrics; p: float): Duration =
   ## O4: the `p`-quantile of the call latency (0 < p <= 1), within 1/k relative
@@ -730,7 +608,9 @@ proc newCallTimeoutError*(cb: CircuitBreaker; timeout: Duration): ref CallTimeou
 
 proc retryAfter*(cb: CircuitBreaker): Duration =
   ## Time until the next probe while `Open`; zero in the other states.
-  cb.metrics.retryAfter
+  let b = addr cb[]
+  if b.loadState().state == Open:
+    result = initDuration(nanoseconds = max(0'i64, b.openUntil.load(moAcquire) - b.nowNs()))
 
 proc explain*(cb: CircuitBreaker): seq[TransitionEvent] =
   ## Last transitions, oldest first, with reason and window statistics (B4).
@@ -761,6 +641,11 @@ proc disable*(cb: CircuitBreaker) =
   ## Lets every call through without evaluating outcomes until `reset` (A10).
   manualTransition(cb, Disabled)
 
+const fixedAtCreation = ["name", "clock", "classifyError", "onTransition",
+                         "onCall", "seed", "latencyPrecision"]
+  ## Settings that `reconfigure` keeps; every other field is copied, so a new
+  ## numeric setting is reconfigurable without touching `reconfigure`.
+
 proc reconfigure*(cb: CircuitBreaker; cfg: BreakerConfig) =
   ## Atomically replaces the numeric settings (N4). `name`, `clock`,
   ## `classifyError`, `onTransition`, `onCall`, `seed` and `latencyPrecision`
@@ -772,24 +657,9 @@ proc reconfigure*(cb: CircuitBreaker; cfg: BreakerConfig) =
     let windowChanged = cfg.windowKind != b.cfg.windowKind or
       cfg.windowSize != b.cfg.windowSize or cfg.windowDuration != b.cfg.windowDuration or
       cfg.windowBuckets != b.cfg.windowBuckets
-    b.cfg.policy = cfg.policy
-    b.cfg.failureThreshold = cfg.failureThreshold
-    b.cfg.failureRateThreshold = cfg.failureRateThreshold
-    b.cfg.minimumCalls = cfg.minimumCalls
-    b.cfg.windowKind = cfg.windowKind
-    b.cfg.windowSize = cfg.windowSize
-    b.cfg.windowDuration = cfg.windowDuration
-    b.cfg.windowBuckets = cfg.windowBuckets
-    b.cfg.slowCallDuration = cfg.slowCallDuration
-    b.cfg.callTimeout = cfg.callTimeout
-    b.cfg.slowCallRateThreshold = cfg.slowCallRateThreshold
-    b.cfg.openTimeout = cfg.openTimeout
-    b.cfg.backoffMultiplier = cfg.backoffMultiplier
-    b.cfg.maxOpenTimeout = cfg.maxOpenTimeout
-    b.cfg.jitter = cfg.jitter
-    b.cfg.halfOpenMaxProbes = cfg.halfOpenMaxProbes
-    b.cfg.successThreshold = cfg.successThreshold
-    b.cfg.shadowMode = cfg.shadowMode
+    for field, dst, src in fieldPairs(b.cfg, cfg):
+      when field notin fixedAtCreation and field != "historySize":
+        dst = src
     if cfg.historySize != b.cfg.historySize:
       b.history.setLen(0)
       b.historyNext = 0
@@ -798,25 +668,3 @@ proc reconfigure*(cb: CircuitBreaker; cfg: BreakerConfig) =
       b.window = newWindow(b.cfg)
       b.setConsecutive(0)
     b.updateFastFlags()
-
-proc fmtDur(d: Duration): string =
-  let ms = d.inMilliseconds
-  if ms >= 1000: &"{ms.float / 1000.0:.1f}s" else: &"{ms}ms"
-
-proc report*(cb: CircuitBreaker): string =
-  ## Human-readable one-block summary for terminals and logs (N10).
-  let m = cb.metrics
-  result = &"circuit breaker '{m.name}': {m.state}\n" &
-    &"  window: {m.window.calls} calls, failure rate {m.window.failureRate * 100:.1f}%, " &
-    &"slow rate {m.window.slowCallRate * 100:.1f}%\n" &
-    &"  consecutive failures: {m.consecutiveFailures}\n" &
-    &"  totals: {m.successes} ok, {m.failures} failed, {m.ignored} ignored, " &
-    &"{m.rejected} rejected, {m.shadowRejected} shadow-rejected, {m.slowCalls} slow\n" &
-    &"  transitions: {m.transitions}, callback errors: {m.callbackErrors}"
-  if m.state == Open:
-    result &= &"\n  next probe in: {fmtDur(m.retryAfter)} (open period {fmtDur(m.currentOpenTimeout)})"
-  let h = cb.explain
-  if h.len > 0:
-    let last = h[^1]
-    result &= &"\n  last transition: {last.fromState} -> {last.toState} ({last.reason})"
-  result = result.strip(leading = false)

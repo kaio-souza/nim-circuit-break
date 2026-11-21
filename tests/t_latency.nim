@@ -4,7 +4,7 @@
 
 import std/[unittest, math]
 import helpers
-import circuit_breaker/latency
+import circuit_breaker/private/latency
 
 suite "latency histogram (O4)":
   test "O4: bucket bounds bracket every value within 1/k relative width":

@@ -9,7 +9,7 @@
 ##   # serve `body` on /metrics with content type text/plain; version=0.0.4
 
 import std/[strutils, strformat, times]
-import types, core, latency
+import types, core, private/latency
 
 proc escapeLabel(s: string): string =
   ## Label values escape backslash, double quote and newline.
@@ -36,7 +36,40 @@ proc family(buf: var string; name, kind, help: string) =
 proc sample(buf: var string; name, labels: string; value: string) =
   buf.add name & "{" & labels & "} " & value & "\n"
 
-const allStates = [Closed, Open, HalfOpen, ForcedOpen, Disabled]
+type MetricValue = proc(m: BreakerMetrics): string {.nimcall.}
+
+proc seconds(d: Duration): string = num(d.inNanoseconds.float / 1e9)
+
+const scalarFamilies: array[9, (string, string, string, MetricValue)] = [
+  ("circuit_breaker_slow_calls_total", "counter",
+   "Calls slower than the slow-call duration.",
+   proc(m: BreakerMetrics): string {.nimcall.} = $m.slowCalls),
+  ("circuit_breaker_transitions_total", "counter", "State transitions.",
+   proc(m: BreakerMetrics): string {.nimcall.} = $m.transitions),
+  ("circuit_breaker_consecutive_failures", "gauge",
+   "Failures in a row, counted in Closed.",
+   proc(m: BreakerMetrics): string {.nimcall.} = $m.consecutiveFailures),
+  ("circuit_breaker_probes_in_flight", "gauge", "Probe calls running in HalfOpen.",
+   proc(m: BreakerMetrics): string {.nimcall.} = $m.probesInFlight),
+  ("circuit_breaker_open_timeout_seconds", "gauge",
+   "Open period in effect, including backoff.",
+   proc(m: BreakerMetrics): string {.nimcall.} = seconds(m.currentOpenTimeout)),
+  ("circuit_breaker_retry_after_seconds", "gauge",
+   "Time until the next probe while Open, zero otherwise.",
+   proc(m: BreakerMetrics): string {.nimcall.} = seconds(m.retryAfter)),
+  ("circuit_breaker_window_calls", "gauge", "Calls in the sliding window.",
+   proc(m: BreakerMetrics): string {.nimcall.} = $m.window.calls),
+  ("circuit_breaker_window_failure_rate", "gauge",
+   "Failure rate in the sliding window, 0 to 1.",
+   proc(m: BreakerMetrics): string {.nimcall.} = num(m.window.failureRate)),
+  ("circuit_breaker_window_slow_call_rate", "gauge",
+   "Slow-call rate in the sliding window, 0 to 1.",
+   proc(m: BreakerMetrics): string {.nimcall.} = num(m.window.slowCallRate))]
+  # Families with one sample per breaker, in exposition order.
+
+const stateFamilyAfter = 1
+  # The state family (one sample per state) follows this index, which keeps
+  # the order of earlier releases.
 
 proc renderPrometheus*(breakers: openArray[CircuitBreaker]): string =
   ## Renders the metrics of every breaker in one exposition body. Each family
@@ -57,69 +90,18 @@ proc renderPrometheus*(breakers: openArray[CircuitBreaker]): string =
       buf.sample("circuit_breaker_calls_total",
                  &"name=\"{n}\",outcome=\"{outcome}\"", $value)
 
-  buf.family("circuit_breaker_slow_calls_total", "counter",
-             "Calls slower than the slow-call duration.")
-  for m in ms:
-    buf.sample("circuit_breaker_slow_calls_total",
-               &"name=\"{escapeLabel(m.name)}\"", $m.slowCalls)
-
-  buf.family("circuit_breaker_transitions_total", "counter",
-             "State transitions.")
-  for m in ms:
-    buf.sample("circuit_breaker_transitions_total",
-               &"name=\"{escapeLabel(m.name)}\"", $m.transitions)
-
-  buf.family("circuit_breaker_state", "gauge",
-             "1 for the current state of each breaker, 0 for the others.")
-  for m in ms:
-    let n = escapeLabel(m.name)
-    for s in allStates:
-      buf.sample("circuit_breaker_state", &"name=\"{n}\",state=\"{s}\"",
-                 if m.state == s: "1" else: "0")
-
-  buf.family("circuit_breaker_consecutive_failures", "gauge",
-             "Failures in a row, counted in Closed.")
-  for m in ms:
-    buf.sample("circuit_breaker_consecutive_failures",
-               &"name=\"{escapeLabel(m.name)}\"", $m.consecutiveFailures)
-
-  buf.family("circuit_breaker_probes_in_flight", "gauge",
-             "Probe calls running in HalfOpen.")
-  for m in ms:
-    buf.sample("circuit_breaker_probes_in_flight",
-               &"name=\"{escapeLabel(m.name)}\"", $m.probesInFlight)
-
-  buf.family("circuit_breaker_open_timeout_seconds", "gauge",
-             "Open period in effect, including backoff.")
-  for m in ms:
-    buf.sample("circuit_breaker_open_timeout_seconds",
-               &"name=\"{escapeLabel(m.name)}\"",
-               num(m.currentOpenTimeout.inNanoseconds.float / 1e9))
-
-  buf.family("circuit_breaker_retry_after_seconds", "gauge",
-             "Time until the next probe while Open, zero otherwise.")
-  for m in ms:
-    buf.sample("circuit_breaker_retry_after_seconds",
-               &"name=\"{escapeLabel(m.name)}\"",
-               num(m.retryAfter.inNanoseconds.float / 1e9))
-
-  buf.family("circuit_breaker_window_calls", "gauge",
-             "Calls in the sliding window.")
-  for m in ms:
-    buf.sample("circuit_breaker_window_calls",
-               &"name=\"{escapeLabel(m.name)}\"", $m.window.calls)
-
-  buf.family("circuit_breaker_window_failure_rate", "gauge",
-             "Failure rate in the sliding window, 0 to 1.")
-  for m in ms:
-    buf.sample("circuit_breaker_window_failure_rate",
-               &"name=\"{escapeLabel(m.name)}\"", num(m.window.failureRate))
-
-  buf.family("circuit_breaker_window_slow_call_rate", "gauge",
-             "Slow-call rate in the sliding window, 0 to 1.")
-  for m in ms:
-    buf.sample("circuit_breaker_window_slow_call_rate",
-               &"name=\"{escapeLabel(m.name)}\"", num(m.window.slowCallRate))
+  for i, (name, kind, help, value) in scalarFamilies:
+    buf.family(name, kind, help)
+    for m in ms:
+      buf.sample(name, &"name=\"{escapeLabel(m.name)}\"", value(m))
+    if i == stateFamilyAfter:
+      buf.family("circuit_breaker_state", "gauge",
+                 "1 for the current state of each breaker, 0 for the others.")
+      for m in ms:
+        let n = escapeLabel(m.name)
+        for s in CircuitState:
+          buf.sample("circuit_breaker_state", &"name=\"{n}\",state=\"{s}\"",
+                     if m.state == s: "1" else: "0")
 
   # O4 histogram. Prometheus histograms are cumulative over `le` bounds; only
   # bounds where the count grows are emitted, and bounds that round to the same

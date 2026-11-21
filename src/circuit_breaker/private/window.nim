@@ -1,7 +1,7 @@
 ## Sliding windows with O(1) updates and fixed memory (F2, F3, P3).
 ## Internal: used by the breaker; not part of the stable API.
 
-import types
+import ../types
 
 type
   TimeBucket = object

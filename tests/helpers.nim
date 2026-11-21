@@ -21,3 +21,10 @@ proc fail*(cb: CircuitBreaker): CallResultKind =
 proc openIt*(cb: CircuitBreaker; failures = 3) =
   for _ in 1 .. failures: discard cb.fail()
   doAssert cb.state == Open, "expected Open, got " & $cb.state
+
+when compileOption("threads"):
+  # std/threadimpl (Nim 2.2) wraps the thread body in a bare `except:`.
+  # unittest's `test` turns BareExcept on for its body, so instantiating
+  # `createThread` there warns; instantiating it here does not.
+  proc startThread*(t: var Thread[int]; fn: proc(i: int) {.thread, nimcall.}; arg: int) =
+    createThread(t, fn, arg)

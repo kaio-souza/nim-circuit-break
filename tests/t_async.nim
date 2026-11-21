@@ -13,6 +13,12 @@ proc failingOp(): Future[int] {.async.} =
 proc voidOp(): Future[void] {.async.} =
   await sleepAsync(1)
 
+# unittest's `test` and `check` turn BareExcept on for the code they wrap, and
+# asyncmacro's `except Exception` would then warn where `callAsync[int]` is
+# first instantiated. Instantiating it here, at module level, keeps it quiet.
+proc callInt(cb: CircuitBreaker; fn: proc(): Future[int]): Future[int] {.used.} =
+  cb.callAsync(fn)
+
 suite "async":
   test "Y1/A5: callAsync returns values and records success":
     let cb = newBreaker(newFakeClock())

@@ -104,7 +104,7 @@ when compileOption("threads"):
         gRejected.store(0)
         var threads: array[threadCount, Thread[int]]
         for i in 0 ..< threadCount:
-          createThread(threads[i], worker, i)
+          startThread(threads[i], worker, i)
         joinThreads(threads)
         check gRejected.load == threadCount * iterations
         check gBreaker.metrics.rejected == int64(threadCount * iterations)

@@ -9,7 +9,7 @@
 ## rates with long timeouts, use `circuit_breaker/chronos_async` (Y3).
 
 import std/[asyncdispatch, times]
-import types, core
+import core
 
 proc callAsync*[T](cb: CircuitBreaker; fn: proc(): Future[T]): Future[T] {.async.} =
   ## Async version of `call`: raises `CircuitOpenError` when rejected and

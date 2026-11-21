@@ -41,7 +41,7 @@ when compileOption("threads"):
         openTimeout = ms(5), halfOpenMaxProbes = maxProbes,
         clock = gClock.source))
       var threads: array[threadCount, Thread[int]]
-      for i in 0 ..< threadCount: createThread(threads[i], worker, i)
+      for i in 0 ..< threadCount: startThread(threads[i], worker, i)
       joinThreads(threads)
       let m = gBreaker.metrics
       checkpoint "peak=" & $probesPeak.load & " attempts=" & $attempts.load & "\n" & gBreaker.report

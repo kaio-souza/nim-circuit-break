@@ -1,6 +1,11 @@
 import std/[unittest, strutils, os]
 import helpers
 
+proc failIO() =
+  # A plain call, not a `raise` statement: `expect` would flag the code after
+  # a bare `raise` as unreachable.
+  raise newException(IOError, "x")
+
 proc guardedWork(cb: CircuitBreaker; earlyReturn: bool): int =
   withBreaker(cb):
     if earlyReturn: return 1
@@ -65,7 +70,7 @@ suite "api":
     let cb = newBreaker(newFakeClock(), failureThreshold = 1)
     expect IOError:
       withBreaker(cb):
-        raise newException(IOError, "x")
+        failIO()
     check cb.state == Open
 
   test "E2: an unresolved permit records a failure when it goes out of scope":

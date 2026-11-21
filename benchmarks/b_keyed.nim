@@ -8,7 +8,7 @@ const n = 100_000
 proc main() =
   header("keyed breakers (capacity 1000)")
   let kb = newKeyedBreaker[int](1000, proc(key: int): BreakerConfig =
-    initBreakerConfig())
+    BreakerConfig())
   for k in 0 ..< 1000: discard kb.get(k)
   var k = 0
   bench("BM7 get existing key (hit, LRU move)", n):

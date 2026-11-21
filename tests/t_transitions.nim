@@ -8,9 +8,9 @@ suite "state machine":
     check cb.state == Closed
     cb.openIt()
     clock.advance(ms(1001))
-    check cb.fail() == crFailed          # probe fails: HalfOpen -> Open
+    check cb.fail() == Raised          # probe fails: HalfOpen -> Open
     clock.advance(ms(1001))
-    check cb.succeed() == crOk           # probe succeeds: HalfOpen -> Closed
+    check cb.succeed() == Returned           # probe succeeds: HalfOpen -> Closed
     const allowed = [(Closed, Open), (Open, HalfOpen), (HalfOpen, Open), (HalfOpen, Closed)]
     var seen: seq[(CircuitState, CircuitState)]
     for ev in cb.explain: seen.add (ev.fromState, ev.toState)
@@ -31,7 +31,7 @@ suite "state machine":
     discard cb.fail()
     discard cb.fail()
     check cb.consecutiveFailures == 2
-    check cb.succeed() == crOk
+    check cb.succeed() == Returned
     check cb.consecutiveFailures == 0
     discard cb.fail()
     discard cb.fail()
@@ -63,17 +63,17 @@ suite "state machine":
     var events: seq[CircuitState]
     let clock = newFakeClock()
     let cb = newBreaker(clock, onTransition = proc(e: TransitionEvent) =
-      events.add e.toState)
+      {.cast(gcsafe).}: events.add e.toState)  # single-threaded test
     cb.openIt()
     clock.advance(ms(1001))
-    check cb.fail() == crFailed
+    check cb.fail() == Raised
     check cb.state == Open
     check events == @[Open, HalfOpen, Open]
 
   test "S7: HalfOpen limits concurrent probes":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-      openTimeout = ms(100), halfOpenMaxProbes = 2, clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+      openTimeout: ms(100), halfOpenMaxProbes: 2, clock: clock.source))
     discard cb.fail()
     clock.advance(ms(101))
     var p1 = cb.acquire()
@@ -89,17 +89,17 @@ suite "state machine":
 
   test "S8: successThreshold consecutive probe successes close the circuit":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-      openTimeout = ms(100), successThreshold = 2, clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+      openTimeout: ms(100), successThreshold: 2, clock: clock.source))
     discard cb.fail()
     clock.advance(ms(101))
-    check cb.succeed() == crOk
+    check cb.succeed() == Returned
     check cb.state == HalfOpen
-    check cb.succeed() == crOk
+    check cb.succeed() == Returned
     check cb.state == Closed
 
   test "T1: default clock is monotonic (MonoTime)":
-    let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1))
+    let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1))
     let before = getMonoTime().ticks
     discard cb.fail()
     let at = cb.explain[^1].atNanos
@@ -111,17 +111,17 @@ suite "state machine":
     let r = cb.tryCall(proc(): int =
       clock.advance(ms(500))
       raise newException(IOError, "slow failure"))
-    check r.kind == crFailed
+    check r.kind == Raised
     clock.advance(ms(900))
-    check cb.succeed() == crRejected     # 900 ms after the end: still open
+    check cb.succeed() == Refused     # 900 ms after the end: still open
     clock.advance(ms(101))
-    check cb.succeed() == crOk
+    check cb.succeed() == Returned
 
   test "T3/G4: exponential backoff on consecutive reopenings, capped":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-      openTimeout = ms(1000), backoffMultiplier = 2.0, maxOpenTimeout = ms(3000),
-      clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+      openTimeout: ms(1000), backoffMultiplier: 2.0, maxOpenTimeout: ms(3000),
+      clock: clock.source))
     discard cb.fail()
     check cb.metrics.currentOpenTimeout == ms(1000)
     clock.advance(ms(1000))
@@ -131,15 +131,15 @@ suite "state machine":
     discard cb.fail()
     check cb.metrics.currentOpenTimeout == ms(3000)
     clock.advance(ms(3000))
-    check cb.succeed() == crOk
+    check cb.succeed() == Returned
     check cb.state == Closed
     discard cb.fail()
     check cb.metrics.currentOpenTimeout == ms(1000)   # backoff resets after recovery
 
   test "T4: jitter only delays the probe, within the configured bound":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-      openTimeout = ms(1000), jitter = 0.5, clock = clock.source, seed = 7))
+    let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+      openTimeout: ms(1000), jitter: 0.5, clock: clock.source, seed: 7))
     for _ in 1 .. 50:
       discard cb.fail()
       let t = cb.metrics.currentOpenTimeout
@@ -149,14 +149,14 @@ suite "state machine":
   test "A10/S2: reset, forceOpen and disable":
     let cb = newBreaker(newFakeClock())
     cb.forceOpen()
-    check cb.succeed() == crRejected
+    check cb.succeed() == Refused
     check cb.isOpen
     cb.reset()
-    check cb.state == Closed and cb.succeed() == crOk
+    check cb.state == Closed and cb.succeed() == Returned
     cb.disable()
     for _ in 1 .. 10: discard cb.fail()
     check cb.state == Disabled
-    check cb.succeed() == crOk
+    check cb.succeed() == Returned
 
   test "A11: internal transitions are not public":
     let cb = newBreaker(newFakeClock())

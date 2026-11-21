@@ -22,6 +22,7 @@ Each file records one decision: its context, what was decided, the consequences,
 | [0016](0016-chronos-cancellation-and-timeouts.md) | Chronos module; cancellations not counted by default; `callTimeout` for the async APIs | Accepted |
 | [0017](0017-fuzzing-without-a-dedicated-library.md) | No dedicated fuzzing library; ThreadSanitizer in CI, libFuzzer harness against the model | Accepted |
 | [0018](0018-supported-nim-versions-and-platforms.md) | Nim >= 2.0; CI on Nim 2.0 to devel, Linux, macOS and Windows | Accepted |
+| [0019](0019-api-review-before-v1.md) | API review before v1.0: config defaults, enum names, gcsafe callbacks, private modules | Accepted |
 
 ## Template
 

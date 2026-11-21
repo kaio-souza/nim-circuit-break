@@ -6,21 +6,25 @@ The code as it stands in v0.3.0. The reasons behind each choice are in [`decisio
 
 ```
 src/
-  circuit_breaker.nim          # entry point: re-exports types and core
+  circuit_breaker.nim          # entry point: re-exports types, core, calls and report
   circuit_breaker/
-    types.nim                  # enums, BreakerConfig, validate/diagnose, events, metrics, CircuitOpenError
-    window.nim                 # SlidingWindow: count and time windows, O(1) (internal)
-    latency.nim                # log-bucket latency histogram math (O4)
-    core.nim                   # state machine, Permit, call/tryCall/callOr/withBreaker, control and inspection
+    types.nim                  # enums, BreakerConfig (with defaults), validate/diagnose, events, metrics, errors
+    core.nim                   # state machine, Permit, acquire/record, control and inspection
+    calls.nim                  # call/tryCall/callOr/withBreaker on top of Permit
+    report.nim                 # report: human-readable summary (N10)
     prometheus.nim             # renderPrometheus: text exposition (O6/B3), explicit import
     logs.nim                   # withTransitionLog: std/logging hook (O7), explicit import
     async.nim                  # callAsync (std/asyncdispatch) with callTimeout, explicit import
     chronos_async.nim          # callAsync for Chronos: cancellation (Y3) and callTimeout (T5); needs Chronos
-    keyed.nim                  # KeyedBreaker[K]: one breaker per key with LRU, explicit import
+    keyed.nim                  # KeyedBreaker[K]: one breaker per key with LRU, explicit import (experimental)
     testing.nim                # FakeClock, explicit import
+    private/                   # internal, not part of the API (ADR-0019)
+      window.nim               # SlidingWindow: count and time windows, O(1)
+      latency.nim              # log-bucket latency histogram math (O4)
+      sync.nim                 # lock that compiles away without --threads:on
 ```
 
-Module dependencies: `types` ← (`window`, `latency`) ← `core` ← (`async`, `chronos_async`, `keyed`, `prometheus`). `logs` and `testing` depend only on `types`. The core never imports the optional modules (checked by a test in `t_prometheus`). No dependency outside the standard library ([ADR-0010](decisions/0010-zero-dependencies-and-async.md)), except Chronos for `chronos_async`, which is not a package dependency ([ADR-0016](decisions/0016-chronos-cancellation-and-timeouts.md)).
+Module dependencies: `types` ← (`private/window`, `private/latency`, `private/sync`) ← `core` ← (`calls`, `report`, `async`, `chronos_async`, `prometheus`); `keyed` also uses `calls`. `logs` and `testing` depend only on `types`. The core never imports the optional modules (checked by a test in `t_prometheus`). No dependency outside the standard library ([ADR-0010](decisions/0010-zero-dependencies-and-async.md)), except Chronos for `chronos_async`, which is not a package dependency ([ADR-0016](decisions/0016-chronos-cancellation-and-timeouts.md)).
 
 ## Call flow
 
@@ -70,7 +74,7 @@ Without `--threads:on` the lock is compiled out.
 
 ## Sliding windows
 
-`window.nim` implements two variants with O(1) cost per call and fixed memory ([ADR-0008](decisions/0008-o1-sliding-windows.md)):
+`private/window.nim` implements two variants with O(1) cost per call and fixed memory ([ADR-0008](decisions/0008-o1-sliding-windows.md)):
 
 - **Count**: a ring buffer of `uint8` (bit 0 = failure, bit 1 = slow) with incremental totals.
 - **Time**: `windowBuckets` buckets indexed by epoch (`now div bucketNanos`); only the buckets of elapsed epochs are cleared.

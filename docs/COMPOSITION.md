@@ -34,7 +34,7 @@ except DependencyError:
   backoff = backoff * 2
 ```
 
-Add jitter in production (`initBreakerConfig(jitter = ...)` covers the breaker's
+Add jitter in production (`BreakerConfig(jitter: ...)` covers the breaker's
 own open period; the retry loop needs its own) so that many clients do not retry
 in lockstep.
 
@@ -73,7 +73,7 @@ Not every error should open the circuit. A bad request from the caller is not a
 dependency failure. Use `classifyError` to ignore those errors:
 
 ```nim
-initBreakerConfig(classifyError = proc(e: ref CatchableError): Verdict =
+BreakerConfig(classifyError: proc(e: ref CatchableError): Verdict =
   if e of ValidationError: ignoreCall() else: countAsFailure())  # ValidationError: your own type
 ```
 

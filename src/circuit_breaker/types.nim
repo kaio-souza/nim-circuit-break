@@ -23,9 +23,9 @@ type
 
   VerdictKind* = enum
     ## How a call outcome counts.
-    vkSuccess  ## Counts as a success.
-    vkFailure  ## Counts as a failure.
-    vkIgnore   ## Not counted (e.g. a caller error).
+    Success  ## Counts as a success.
+    Failure  ## Counts as a failure.
+    Ignore   ## Not counted (e.g. a caller error).
 
   Verdict* = object
     ## How a call outcome must be counted.
@@ -34,14 +34,14 @@ type
 
   TransitionReason* = enum
     ## Why a transition happened; `$` gives a readable text.
-    trConsecutiveFailures = "consecutive failure threshold reached"
-    trFailureRate = "failure rate threshold reached"
-    trSlowCallRate = "slow call rate threshold reached"
-    trServerHint = "failure carried a retry-after hint"
-    trOpenTimeoutElapsed = "open timeout elapsed"
-    trProbeSucceeded = "probe calls succeeded"
-    trProbeFailed = "probe call failed"
-    trManual = "manual operation"
+    FailureThresholdReached = "consecutive failure threshold reached"
+    FailureRateReached = "failure rate threshold reached"
+    SlowCallRateReached = "slow call rate threshold reached"
+    ServerHint = "failure carried a retry-after hint"
+    OpenTimeoutElapsed = "open timeout elapsed"
+    ProbeSucceeded = "probe calls succeeded"
+    ProbeFailed = "probe call failed"
+    Manual = "manual operation"
 
   WindowStats* = object
     ## Snapshot of the sliding window.
@@ -64,11 +64,11 @@ type
 
   CallOutcome* = enum
     ## Outcome reported to `onCall`.
-    coSuccess         ## Ran and counted as a success.
-    coFailure         ## Ran and counted as a failure.
-    coIgnored         ## Ran and was not counted.
-    coRejected        ## Rejected by the breaker.
-    coShadowRejected  ## Would have been rejected; let through by shadow mode.
+    Succeeded       ## Ran and counted as a success.
+    Failed          ## Ran and counted as a failure.
+    Ignored         ## Ran and was not counted.
+    Rejected        ## Rejected by the breaker.
+    ShadowRejected  ## Would have been rejected; let through by shadow mode.
 
   CallEvent* = object
     ## Passed to `onCall` after every call or rejection.
@@ -93,40 +93,45 @@ type
 
   Clock* = proc(): int64 {.gcsafe, raises: [].}
     ## Monotonic time source in nanoseconds.
-  ErrorClassifier* = proc(e: ref CatchableError): Verdict
-    ## Decides how an exception raised by the call counts (F5).
-  TransitionCallback* = proc(e: TransitionEvent)
-    ## Called outside the lock after each transition (ADR-0007).
-  CallCallback* = proc(e: CallEvent)
-    ## Called outside the lock after each call; makes every success take the
-    ## general path, so it costs more than a plain call.
+  ErrorClassifier* = proc(e: ref CatchableError): Verdict {.gcsafe.}
+    ## Decides how an exception raised by the call counts (F5). Runs on the
+    ## thread that made the call, so it must be `gcsafe`.
+  TransitionCallback* = proc(e: TransitionEvent) {.gcsafe.}
+    ## Called outside the lock after each transition (ADR-0007), on whichever
+    ## thread caused it, so it must be `gcsafe`.
+  CallCallback* = proc(e: CallEvent) {.gcsafe.}
+    ## Called outside the lock after each call, on the calling thread (must be
+    ## `gcsafe`); makes every success take the general path, so it costs more
+    ## than a plain call.
 
   BreakerConfig* = object
-    ## Configuration. Build with `initBreakerConfig`; validated by `newCircuitBreaker`.
+    ## Configuration, validated by `newCircuitBreaker`. Every field has a
+    ## documented default (K1), so set only what differs:
+    ## `BreakerConfig(name: "payments", failureThreshold: 3)`.
     ## `name`, `clock`, `classifyError`, `onTransition`, `onCall`, `seed` and
     ## `latencyPrecision` are fixed at creation; `reconfigure` changes only the
     ## other numeric settings.
-    name*: string
-    policy*: PolicyKind
-    failureThreshold*: int
-    failureRateThreshold*: float
-    minimumCalls*: int
-    windowKind*: WindowKind
-    windowSize*: int
-    windowDuration*: Duration
-    windowBuckets*: int
+    name*: string = "default"
+    policy*: PolicyKind = ConsecutiveFailures
+    failureThreshold*: int = 5
+    failureRateThreshold*: float = 0.5
+    minimumCalls*: int = 10
+    windowKind*: WindowKind = CountWindow
+    windowSize*: int = 100
+    windowDuration*: Duration = initDuration(seconds = 60)
+    windowBuckets*: int = 10
     slowCallDuration*: Duration       ## Zero disables slow call detection.
     callTimeout*: Duration            ## T5: per-call limit for the async APIs; zero disables it.
                                       ## Sync calls cannot be interrupted and ignore it.
-    slowCallRateThreshold*: float
-    openTimeout*: Duration
-    backoffMultiplier*: float         ## 1.0 disables backoff.
-    maxOpenTimeout*: Duration
+    slowCallRateThreshold*: float = 1.0
+    openTimeout*: Duration = initDuration(seconds = 30)
+    backoffMultiplier*: float = 1.0   ## 1.0 disables backoff.
+    maxOpenTimeout*: Duration = initDuration(minutes = 5)
     jitter*: float                    ## 0.0 .. 1.0, fraction added on top of the open timeout.
-    halfOpenMaxProbes*: int
-    successThreshold*: int
+    halfOpenMaxProbes*: int = 1
+    successThreshold*: int = 1
     shadowMode*: bool                 ## Evaluate but never reject.
-    historySize*: int                 ## Transitions kept for `explain`.
+    historySize*: int = 32            ## Transitions kept for `explain`.
     latencyPrecision*: int            ## O4: sub-buckets per octave, 1..8; 0 disables latency tracking.
     classifyError*: ErrorClassifier
     onTransition*: TransitionCallback
@@ -158,57 +163,14 @@ type
 
 proc countAsSuccess*(): Verdict {.inline.} =
   ## Verdict: the call counts as a success.
-  Verdict(kind: vkSuccess)
+  Verdict(kind: Success)
 proc countAsFailure*(openFor = Duration()): Verdict {.inline.} =
   ## Verdict: the call counts as a failure; a positive `openFor` opens the
   ## circuit for that long (server hint).
-  Verdict(kind: vkFailure, openFor: openFor)
+  Verdict(kind: Failure, openFor: openFor)
 proc ignoreCall*(): Verdict {.inline.} =
   ## Verdict: the call is not counted.
-  Verdict(kind: vkIgnore)
-
-proc initBreakerConfig*(
-    name = "default",
-    policy = ConsecutiveFailures,
-    failureThreshold = 5,
-    failureRateThreshold = 0.5,
-    minimumCalls = 10,
-    windowKind = CountWindow,
-    windowSize = 100,
-    windowDuration = initDuration(seconds = 60),
-    windowBuckets = 10,
-    slowCallDuration = Duration(),
-    callTimeout = Duration(),
-    slowCallRateThreshold = 1.0,
-    openTimeout = initDuration(seconds = 30),
-    backoffMultiplier = 1.0,
-    maxOpenTimeout = initDuration(minutes = 5),
-    jitter = 0.0,
-    halfOpenMaxProbes = 1,
-    successThreshold = 1,
-    shadowMode = false,
-    historySize = 32,
-    latencyPrecision = 0,
-    classifyError: ErrorClassifier = nil,
-    onTransition: TransitionCallback = nil,
-    onCall: CallCallback = nil,
-    clock: Clock = nil,
-    seed = 0'i64
-): BreakerConfig =
-  ## Builds a configuration with documented defaults (K1).
-  BreakerConfig(
-    name: name, policy: policy, failureThreshold: failureThreshold,
-    failureRateThreshold: failureRateThreshold, minimumCalls: minimumCalls,
-    windowKind: windowKind, windowSize: windowSize, windowDuration: windowDuration,
-    windowBuckets: windowBuckets, slowCallDuration: slowCallDuration,
-    callTimeout: callTimeout,
-    slowCallRateThreshold: slowCallRateThreshold, openTimeout: openTimeout,
-    backoffMultiplier: backoffMultiplier, maxOpenTimeout: maxOpenTimeout,
-    jitter: jitter, halfOpenMaxProbes: halfOpenMaxProbes,
-    successThreshold: successThreshold, shadowMode: shadowMode,
-    historySize: historySize, latencyPrecision: latencyPrecision,
-    classifyError: classifyError,
-    onTransition: onTransition, onCall: onCall, clock: clock, seed: seed)
+  Verdict(kind: Ignore)
 
 proc validate*(c: BreakerConfig) {.raises: [ValueError].} =
   ## Raises `ValueError` describing the first invalid setting (K2).

@@ -19,9 +19,9 @@ let fn = proc(): int = work()
 
 proc main() =
   header("core")
-  let cb = newCircuitBreaker(initBreakerConfig(name = "bench"))
-  let cbLogged = newCircuitBreaker(withTransitionLog(initBreakerConfig(name = "bench-log"), NullLogger(levelThreshold: lvlDebug)))
-  let cbLatency = newCircuitBreaker(initBreakerConfig(name = "bench-latency", latencyPrecision = 4))
+  let cb = newCircuitBreaker(BreakerConfig(name: "bench"))
+  let cbLogged = newCircuitBreaker(withTransitionLog(BreakerConfig(name: "bench-log"), NullLogger(levelThreshold: lvlDebug)))
+  let cbLatency = newCircuitBreaker(BreakerConfig(name: "bench-latency", latencyPrecision: 4))
 
   bench("BM0 baseline: direct closure call", n):
     keep = fn()
@@ -38,12 +38,12 @@ proc main() =
   bench("BM6 tryCall (explicit result)", n):
     keep = cb.tryCall(fn).value
 
-  let slow = newCircuitBreaker(initBreakerConfig(
-    slowCallDuration = initDuration(seconds = 1)))
+  let slow = newCircuitBreaker(BreakerConfig(
+    slowCallDuration: initDuration(seconds = 1)))
   bench("BM1 call with slow-call detection (reads clock)", n):
     keep = slow.call(fn)
 
-  let rate = newCircuitBreaker(initBreakerConfig(policy = FailureRate))
+  let rate = newCircuitBreaker(BreakerConfig(policy: FailureRate))
   bench("BM12 call with transition logging hook (O7, no transition)", n):
     keep = cbLogged.call(fn)
   bench("BM10 call with latency histogram (O4, precision 4)", n):
@@ -52,19 +52,19 @@ proc main() =
     keep = rate.call(fn)
 
   var events = 0
-  let observed = newCircuitBreaker(initBreakerConfig(
-    onCall = proc(e: CallEvent) = inc events))
+  let observed = newCircuitBreaker(BreakerConfig(
+    onCall: proc(e: CallEvent) = inc events))
   bench("BM1 call with onCall event", n):
     keep = observed.call(fn)
 
-  let open = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-    openTimeout = initDuration(hours = 1), maxOpenTimeout = initDuration(hours = 1)))
+  let open = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+    openTimeout: initDuration(hours = 1), maxOpenTimeout: initDuration(hours = 1)))
   open.forceOpen()
   bench("BM3 rejection while ForcedOpen via tryAcquire", n):
     var p: Permit
     keep = ord(open.tryAcquire(p))
-  let tripped = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-    openTimeout = initDuration(hours = 1), maxOpenTimeout = initDuration(hours = 1)))
+  let tripped = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+    openTimeout: initDuration(hours = 1), maxOpenTimeout: initDuration(hours = 1)))
   discard tripped.tryCall(proc(): int = raise newException(IOError, "x"))
   bench("BM3 rejection while Open via tryAcquire (reads clock)", n):
     var p: Permit
@@ -75,9 +75,9 @@ proc main() =
     except CircuitOpenError:
       keep = 0
 
-  let shadow = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-    shadowMode = true, openTimeout = initDuration(hours = 1),
-    maxOpenTimeout = initDuration(hours = 1)))
+  let shadow = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+    shadowMode: true, openTimeout: initDuration(hours = 1),
+    maxOpenTimeout: initDuration(hours = 1)))
   discard shadow.tryCall(proc(): int = raise newException(IOError, "x"))
   bench("BM8 shadow mode while Open (would reject)", n):
     keep = shadow.call(fn)

@@ -13,9 +13,9 @@ proc op(): Future[int] {.async.} = return 1
 
 proc main() =
   header("async (chronos)")
-  let cb = newCircuitBreaker(initBreakerConfig(name = "bench"))
-  let timed = newCircuitBreaker(initBreakerConfig(name = "bench-timeout",
-    callTimeout = initDuration(seconds = 1)))
+  let cb = newCircuitBreaker(BreakerConfig(name: "bench"))
+  let timed = newCircuitBreaker(BreakerConfig(name: "bench-timeout",
+    callTimeout: initDuration(seconds = 1)))
   bench("BM14 baseline: waitFor op()", n):
     keep = waitFor op()
   bench("BM14 waitFor callAsync(op)", n):

@@ -3,9 +3,9 @@
 ## .. code-block:: nim
 ##   import circuit_breaker, std/times
 ##
-##   let cb = newCircuitBreaker(initBreakerConfig(
-##     name = "payments", failureThreshold = 5,
-##     openTimeout = initDuration(seconds = 30)))
+##   let cb = newCircuitBreaker(BreakerConfig(
+##     name: "payments", failureThreshold: 5,
+##     openTimeout: initDuration(seconds = 30)))
 ##
 ##   try:
 ##     let body = cb.call(proc(): string = fetchPayment())

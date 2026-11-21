@@ -27,7 +27,7 @@ proc run(threads: int): float =
 proc main() =
   echo "\n## BM2 threads (call in Closed, shared breaker)"
   echo &"""{"threads":>8} {"ns/op (wall)":>14} {"Mops/s total":>14}"""
-  gBreaker = newCircuitBreaker(initBreakerConfig())
+  gBreaker = newCircuitBreaker(BreakerConfig())
   for threads in [1, 2, 4, 8]:
     var runs: seq[float]
     for _ in 1 .. 5: runs.add run(threads)

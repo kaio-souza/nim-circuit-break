@@ -151,8 +151,8 @@ proc newCircuitBreaker*(cfg: BreakerConfig): CircuitBreaker =
 proc newCircuitBreaker*(name: string; failureThreshold: int;
                         openTimeout: Duration): CircuitBreaker =
   ## Shortcut for the common consecutive-failures setup.
-  newCircuitBreaker(initBreakerConfig(name = name, failureThreshold = failureThreshold,
-                                      openTimeout = openTimeout))
+  newCircuitBreaker(BreakerConfig(name: name, failureThreshold: failureThreshold,
+                                  openTimeout: openTimeout))
 
 # ---------------------------------------------------------- transitions
 
@@ -232,10 +232,10 @@ proc rateTripLocked(b: BreakerPtr; now, slowNs: int64;
   let st = b.window.stats(now)
   if st.calls < b.cfg.minimumCalls: return false
   if b.cfg.policy == FailureRate and st.failureRate >= b.cfg.failureRateThreshold:
-    reason = trFailureRate
+    reason = FailureRateReached
     return true
   if slowNs > 0 and st.slowCallRate >= b.cfg.slowCallRateThreshold:
-    reason = trSlowCallRate
+    reason = SlowCallRateReached
     return true
 
 proc recordForgotten(p: Permit) {.noinline.} =
@@ -303,7 +303,7 @@ proc acquireImpl(b: BreakerPtr; permit: var Permit; retryAfter: var int64;
   locked(b):
     var (s, gen) = b.loadState()
     if s == Open and now >= b.openUntil.load(moRelaxed):
-      b.transitionLocked(HalfOpen, trOpenTimeoutElapsed, now, p)
+      b.transitionLocked(HalfOpen, OpenTimeoutElapsed, now, p)
       (s, gen) = b.loadState()
     case s
     of Closed, Disabled:
@@ -325,12 +325,12 @@ proc acquireImpl(b: BreakerPtr; permit: var Permit; retryAfter: var int64;
         permit = b.grantLocked(gen, now, false, true)
         result = true
         if not b.cfg.onCall.isNil:
-          p.call = CallEvent(outcome: coShadowRejected, state: s)
+          p.call = CallEvent(outcome: ShadowRejected, state: s)
           p.hasCall = true
       else:
         discard b.rejected.fetchAdd(1, moRelaxed)
         if not b.cfg.onCall.isNil:
-          p.call = CallEvent(outcome: coRejected, state: s)
+          p.call = CallEvent(outcome: Rejected, state: s)
           p.hasCall = true
   b.dispatch(p)
 
@@ -376,18 +376,18 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
   try:
     locked(b):
       # The clock is only read when something below needs it.
-      let needNow = startNs > 0 or v.kind == vkFailure or
+      let needNow = startNs > 0 or v.kind == Failure or
                     (b.window.kind == TimeWindow and b.cfg.tracksWindow)
       let now = if needNow: b.nowNs() else: 0'i64
       let elapsed = if startNs > 0: now - startNs else: 0'i64
       let slowNs = b.cfg.slowCallDuration.nanos
-      let slow = slowNs > 0 and startNs > 0 and elapsed >= slowNs and v.kind != vkIgnore
+      let slow = slowNs > 0 and startNs > 0 and elapsed >= slowNs and v.kind != Ignore
       case v.kind
-      of vkSuccess: discard b.successes.fetchAdd(1, moRelaxed)
-      of vkFailure: inc b.failures
-      of vkIgnore: inc b.ignored
+      of Success: discard b.successes.fetchAdd(1, moRelaxed)
+      of Failure: inc b.failures
+      of Ignore: inc b.ignored
       if slow: inc b.slowCalls
-      if b.cfg.latencyPrecision > 0 and startNs > 0 and v.kind != vkIgnore:
+      if b.cfg.latencyPrecision > 0 and startNs > 0 and v.kind != Ignore:
         discard b.latency[latencyBucketOf(elapsed, b.cfg.latencyPrecision)]
           .fetchAdd(1, moRelaxed)
         discard b.latencySum.fetchAdd(elapsed, moRelaxed)
@@ -395,9 +395,9 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
       if not b.cfg.onCall.isNil:
         p.hasCall = true
         p.call = CallEvent(outcome: (case v.kind
-                                     of vkSuccess: coSuccess
-                                     of vkFailure: coFailure
-                                     of vkIgnore: coIgnored),
+                                     of Success: Succeeded
+                                     of Failure: Failed
+                                     of Ignore: Ignored),
                            slow: slow, elapsed: initDuration(nanoseconds = elapsed),
                            state: s)
       if shadow or gen != curGen:
@@ -405,16 +405,16 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
       else:
         case s
         of Closed:
-          if v.kind != vkIgnore:
-            let failed = v.kind == vkFailure
+          if v.kind != Ignore:
+            let failed = v.kind == Failure
             if b.cfg.tracksWindow: b.window.add(now, failed, slow)
             b.setConsecutive(if failed: b.consecutive + 1 else: 0)
             let hint = v.openFor.nanos
             if failed and hint > 0:
-              b.transitionLocked(Open, trServerHint, now, p, hint)
+              b.transitionLocked(Open, ServerHint, now, p, hint)
             elif b.cfg.policy == ConsecutiveFailures and
                  b.consecutive >= b.cfg.failureThreshold:
-              b.transitionLocked(Open, trConsecutiveFailures, now, p)
+              b.transitionLocked(Open, FailureThresholdReached, now, p)
             else:
               var reason: TransitionReason
               if b.rateTripLocked(now, slowNs, reason):
@@ -424,14 +424,14 @@ proc recordCore(b: BreakerPtr; gen: int; startNs: int64; probe, shadow: bool;
           if probe:
             dec b.probesInFlight
             case v.kind
-            of vkFailure:
-              b.transitionLocked(Open, trProbeFailed, now, p, v.openFor.nanos)
-            of vkSuccess:
+            of Failure:
+              b.transitionLocked(Open, ProbeFailed, now, p, v.openFor.nanos)
+            of Success:
               inc b.probeSuccesses
               if b.probeSuccesses >= b.cfg.successThreshold:
-                b.transitionLocked(Closed, trProbeSucceeded,
+                b.transitionLocked(Closed, ProbeSucceeded,
                                    (if needNow: now else: b.nowNs()), p)
-            of vkIgnore:
+            of Ignore:
               discard
         of Open, ForcedOpen, Disabled:
           discard
@@ -480,7 +480,7 @@ proc record*(p: var Permit; v: Verdict) =
   if p.done or p.cb.isNil: return
   p.done = true
   let b = p.cb
-  if v.kind == vkSuccess and not p.probe and not p.shadow and
+  if v.kind == Success and not p.probe and not p.shadow and
      b.fastSuccess.load(moAcquire):
     # Lock-free hot path (P1/P2): a success in Closed only resets the
     # consecutive counter, and that needs the lock only when it is not zero.
@@ -492,7 +492,7 @@ proc record*(p: var Permit; v: Verdict) =
         let (s, gen) = b.loadState()
         if s == Closed and gen == p.gen: b.setConsecutive(0)
     return
-  if v.kind == vkSuccess and not p.probe and not p.shadow and
+  if v.kind == Success and not p.probe and not p.shadow and
      b.cfg.onCall.isNil and b.cfg.onTransition.isNil:
     b.recordSuccessLean(p.gen, p.startNs)
     return
@@ -628,7 +628,7 @@ proc manualTransition(cb: CircuitBreaker; to: CircuitState) =
   let b = addr cb[]
   var p: Pending
   locked(b):
-    b.transitionLocked(to, trManual, b.nowNs(), p)
+    b.transitionLocked(to, Manual, b.nowNs(), p)
   b.dispatch(p)
 
 proc reset*(cb: CircuitBreaker) =

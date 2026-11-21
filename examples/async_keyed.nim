@@ -5,7 +5,7 @@ import std/[asyncdispatch, times, strutils]
 import circuit_breaker, circuit_breaker/[async, keyed]
 
 let breakers = newKeyedBreaker[string](capacity = 100, proc(host: string): BreakerConfig =
-  initBreakerConfig(failureThreshold = 2, openTimeout = initDuration(seconds = 10)))
+  BreakerConfig(failureThreshold: 2, openTimeout: initDuration(seconds = 10)))
 
 proc fetch(host: string): Future[string] {.async.} =
   await sleepAsync(5)

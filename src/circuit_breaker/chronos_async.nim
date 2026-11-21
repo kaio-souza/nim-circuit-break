@@ -20,48 +20,35 @@ import types, core
 proc toChronos(d: times.Duration): chronos.Duration {.inline.} =
   chronos.nanoseconds(d.inNanoseconds)
 
-proc callAsync*[T](cb: CircuitBreaker; fn: proc(): Future[T] {.raises: [].};
+proc callAsync*[T](cb: CircuitBreaker; fn: proc(): Future[T] {.gcsafe, raises: [].};
                    onCancel = ignoreCall()): Future[T] {.async.} =
   ## Runs `fn` under the breaker on the Chronos event loop. `fn` reports its
   ## errors through the future, as every Chronos `{.async.}` proc does.
-  # Chronos requires `gcsafe` async procs. The breaker's operations call user
-  # callbacks and clocks, which the type system cannot prove gcsafe; they are
-  # thread-safe by construction (ADR-0005, ADR-0007), so the calls are cast.
-  var p: Permit
-  {.cast(gcsafe).}:
-    p = acquire(cb)
-  var limit: times.Duration
-  {.cast(gcsafe).}:
-    limit = cb.callTimeout
+  var p = acquire(cb)
+  let limit = cb.callTimeout
   try:
-    var fut: Future[T]
-    {.cast(gcsafe).}:
-      fut = fn()    # closures over refs are allowed, as in `call`
+    let fut = fn()
     if limit > times.Duration() and not fut.finished:
       if not await fut.withTimeout(limit.toChronos):
         # `withTimeout` has cancelled `fut`.
-        {.cast(gcsafe).}:
-          p.failure()
-          # Recorded above: the handler below sees a done permit and only
-          # re-raises. A `CallTimeoutError` raised by `fn` itself (a nested
-          # breaker) goes through the classifier like any other error.
-          raise cb.newCallTimeoutError(limit)
+        p.failure()
+        # Recorded above: the handler below sees a done permit and only
+        # re-raises. A `CallTimeoutError` raised by `fn` itself (a nested
+        # breaker) goes through the classifier like any other error.
+        raise cb.newCallTimeoutError(limit)
     when T is void:
       await fut
     else:
       result = await fut
   except CancelledError as e:
-    {.cast(gcsafe).}:
-      p.record(onCancel)
+    p.record(onCancel)
     raise e
   except CatchableError as e:
-    {.cast(gcsafe).}:
-      p.recordError(e)
+    p.recordError(e)
     raise e
-  {.cast(gcsafe).}:
-    p.success()
+  p.success()
 
-proc callAsync*(cb: CircuitBreaker; fn: proc(): Future[void] {.raises: [].};
+proc callAsync*(cb: CircuitBreaker; fn: proc(): Future[void] {.gcsafe, raises: [].};
                 onCancel = ignoreCall()): Future[void] =
   ## `callAsync` for a `fn` without a result.
   callAsync[void](cb, fn, onCancel)

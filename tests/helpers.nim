@@ -8,9 +8,9 @@ proc ms*(n: int): Duration = initDuration(milliseconds = n)
 
 proc newBreaker*(clock: FakeClock; failureThreshold = 3; openTimeout = ms(1000);
                  onTransition: TransitionCallback = nil): CircuitBreaker =
-  newCircuitBreaker(initBreakerConfig(
-    name = "test", failureThreshold = failureThreshold, openTimeout = openTimeout,
-    onTransition = onTransition, clock = clock.source, seed = 42))
+  newCircuitBreaker(BreakerConfig(
+    name: "test", failureThreshold: failureThreshold, openTimeout: openTimeout,
+    onTransition: onTransition, clock: clock.source, seed: 42))
 
 proc succeed*(cb: CircuitBreaker): CallResultKind =
   cb.tryCall(proc(): int = 1).kind

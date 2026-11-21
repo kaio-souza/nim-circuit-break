@@ -61,9 +61,9 @@ proc callWithRetry(clock: FakeClock; cb: CircuitBreaker; bulkhead: var Bulkhead;
 
 when isMainModule:
   let clock = newFakeClock()
-  let cb = newCircuitBreaker(initBreakerConfig(
-    name = "inventory", failureThreshold = 3, openTimeout = initDuration(milliseconds = 5000),
-    clock = clock.source))
+  let cb = newCircuitBreaker(BreakerConfig(
+    name: "inventory", failureThreshold: 3, openTimeout: initDuration(milliseconds = 5000),
+    clock: clock.source))
   var bulkhead = Bulkhead(limit: 4)
   echo "call 1: retries until the service answers"
   echo "  result = ", callWithRetry(clock, cb, bulkhead, attempts = 4)

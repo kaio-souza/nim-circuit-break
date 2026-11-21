@@ -21,9 +21,9 @@ suite "logging hook (O7)":
   test "O7: transitions are logged in order with their reasons":
     let clock = newFakeClock()
     let log = CaptureLogger(levelThreshold: lvlDebug)
-    let cfg = withTransitionLog(initBreakerConfig(
-      name = "payments", failureThreshold = 1, openTimeout = ms(1000),
-      successThreshold = 1, clock = clock.source), log)
+    let cfg = withTransitionLog(BreakerConfig(
+      name: "payments", failureThreshold: 1, openTimeout: ms(1000),
+      successThreshold: 1, clock: clock.source), log)
     let cb = newCircuitBreaker(cfg)
     discard cb.fail()                    # Closed -> Open
     clock.advance(ms(1000))
@@ -38,8 +38,8 @@ suite "logging hook (O7)":
     let clock = newFakeClock()
     let log = CaptureLogger(levelThreshold: lvlDebug)
     var seen = 0
-    let base = initBreakerConfig(failureThreshold = 1, clock = clock.source,
-                                 onTransition = proc(e: TransitionEvent) = inc seen)
+    let base = BreakerConfig(failureThreshold: 1, clock: clock.source,
+                             onTransition: proc(e: TransitionEvent) = inc seen)
     let cb = newCircuitBreaker(withTransitionLog(base, log))
     discard cb.fail()
     check seen == 1
@@ -48,7 +48,7 @@ suite "logging hook (O7)":
   test "O7: a failing logger does not stop the breaker":
     let clock = newFakeClock()
     let cb = newCircuitBreaker(withTransitionLog(
-      initBreakerConfig(failureThreshold = 1, clock = clock.source),
+      BreakerConfig(failureThreshold: 1, clock: clock.source),
       BrokenLogger(levelThreshold: lvlDebug)))
     discard cb.fail()
     check cb.state == Open

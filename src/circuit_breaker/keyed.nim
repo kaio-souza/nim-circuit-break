@@ -1,6 +1,8 @@
 ## One breaker per key (host, endpoint, tenant...) with a capacity limit and
 ## least-recently-used eviction (N2), so unbounded keys never leak memory.
 ##
+## Experimental (ADR-0019): this module may change in a minor release.
+##
 ## Thread-safety: designed for single-threaded and async code. With threads,
 ## compile with `--mm:atomicArc` and keep each returned breaker referenced
 ## while it is in use.

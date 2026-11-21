@@ -39,9 +39,9 @@ suite "latency histogram (O4)":
     # describes none of the calls. The percentiles tell the two modes apart.
     let clock = newFakeClock()
     let k = 8
-    let cb = newCircuitBreaker(initBreakerConfig(
-      name = "bimodal", failureThreshold = 1000, clock = clock.source,
-      latencyPrecision = k))
+    let cb = newCircuitBreaker(BreakerConfig(
+      name: "bimodal", failureThreshold: 1000, clock: clock.source,
+      latencyPrecision: k))
     for i in 0 ..< 1000:
       let cost = if i mod 10 == 9: ms(100) else: ms(1)
       cb.call(proc() = clock.advance(cost))
@@ -57,7 +57,7 @@ suite "latency histogram (O4)":
 
   test "O4: tracking is off by default: no buckets, zero quantiles":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(clock: clock.source))
     cb.call(proc() = clock.advance(ms(5)))
     let m = cb.metrics
     check m.latencyPrecision == 0
@@ -67,9 +67,9 @@ suite "latency histogram (O4)":
 
   test "O4: failures are sampled too":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(
-      name = "mixed", failureThreshold = 1000, clock = clock.source,
-      latencyPrecision = 4))
+    let cb = newCircuitBreaker(BreakerConfig(
+      name: "mixed", failureThreshold: 1000, clock: clock.source,
+      latencyPrecision: 4))
     cb.call(proc() = clock.advance(ms(2)))
     expect ValueError:
       cb.call(proc() =
@@ -81,6 +81,6 @@ suite "latency histogram (O4)":
 
   test "O4: invalid precision is rejected by validation":
     expect ValueError:
-      discard newCircuitBreaker(initBreakerConfig(latencyPrecision = 9))
+      discard newCircuitBreaker(BreakerConfig(latencyPrecision: 9))
     expect ValueError:
-      discard newCircuitBreaker(initBreakerConfig(latencyPrecision = -1))
+      discard newCircuitBreaker(BreakerConfig(latencyPrecision: -1))

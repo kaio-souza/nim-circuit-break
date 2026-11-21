@@ -3,7 +3,7 @@
 ## .. code-block:: nim
 ##   import circuit_breaker, circuit_breaker/testing
 ##   let clock = newFakeClock()
-##   let cb = newCircuitBreaker(initBreakerConfig(clock = clock.source))
+##   let cb = newCircuitBreaker(BreakerConfig(clock: clock.source))
 ##   clock.advance(initDuration(seconds = 30))  # no sleep needed
 
 import std/[times, atomics]
@@ -29,7 +29,7 @@ proc advance*(c: FakeClock; d: Duration) =
   discard c.nanos.fetchAdd(d.inNanoseconds, moAcquireRelease)
 
 proc source*(c: FakeClock): Clock =
-  ## The `Clock` to pass to `initBreakerConfig(clock = ...)`.
+  ## The `Clock` to pass to `BreakerConfig(clock: ...)`.
   ## The breaker must not outlive `c`.
   let p = addr c[]
   result = proc(): int64 {.gcsafe, raises: [].} = p.nanos.load(moAcquire)

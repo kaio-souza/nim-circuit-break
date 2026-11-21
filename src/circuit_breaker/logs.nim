@@ -6,7 +6,7 @@
 ##
 ## .. code-block:: nim
 ##   import circuit_breaker, circuit_breaker/logs, std/logging
-##   let cfg = withTransitionLog(initBreakerConfig(name = "payments"),
+##   let cfg = withTransitionLog(BreakerConfig(name: "payments"),
 ##                               newConsoleLogger(lvlWarn))
 
 import std/[logging, strformat, times]

@@ -7,9 +7,9 @@ every performance claim below comes from a benchmark in this repository.
 ```nim
 import circuit_breaker, std/times
 
-let cb = newCircuitBreaker(initBreakerConfig(
-  name = "payments", failureThreshold = 5,
-  openTimeout = initDuration(seconds = 30)))
+let cb = newCircuitBreaker(BreakerConfig(
+  name: "payments", failureThreshold: 5,
+  openTimeout: initDuration(seconds = 30)))
 
 try:
   let body = cb.call(proc(): string = fetchPayment())
@@ -58,18 +58,18 @@ Failures of your function propagate unchanged; a rejected call raises
 import circuit_breaker, std/times
 
 # Failure rate over the last 30 s, with slow calls and HTTP-aware classification.
-let cb = newCircuitBreaker(initBreakerConfig(
-  name = "orders-api",
-  policy = FailureRate,
-  failureRateThreshold = 0.5,
-  minimumCalls = 20,
-  windowKind = TimeWindow,
-  windowDuration = initDuration(seconds = 30),
-  slowCallDuration = initDuration(seconds = 2),
-  slowCallRateThreshold = 0.8,
-  backoffMultiplier = 2.0,
-  jitter = 0.2,
-  classifyError = proc(e: ref CatchableError): Verdict =
+let cb = newCircuitBreaker(BreakerConfig(
+  name: "orders-api",
+  policy: FailureRate,
+  failureRateThreshold: 0.5,
+  minimumCalls: 20,
+  windowKind: TimeWindow,
+  windowDuration: initDuration(seconds = 30),
+  slowCallDuration: initDuration(seconds = 2),
+  slowCallRateThreshold: 0.8,
+  backoffMultiplier: 2.0,
+  jitter: 0.2,
+  classifyError: proc(e: ref CatchableError): Verdict =
     if e of HttpError and (ref HttpError)(e).status < 500: ignoreCall()
     else: countAsFailure()))
 
@@ -84,9 +84,9 @@ withBreaker(cb):
 # Explicit result:
 let r = cb.tryCall(proc(): int = compute())
 case r.kind
-of crOk: echo r.value
-of crRejected: echo "retry in ", r.rejection.retryAfter
-of crFailed: echo "failed: ", r.error.msg
+of Returned: echo r.value
+of Refused: echo "retry in ", r.rejection.retryAfter
+of Raised: echo "failed: ", r.error.msg
 
 # Why did it open?
 echo cb.explain[^1].reason   # e.g. "failure rate threshold reached"
@@ -186,6 +186,15 @@ Shared breaker, `call` in Closed, wall time per operation across all threads
 - Requirement traceability: [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md),
   checked in CI (every SPEC requirement has a row); every exported symbol is
   documented, also checked in CI.
+
+## API stability
+
+The core (`circuit_breaker`), `circuit_breaker/async`,
+`circuit_breaker/chronos_async`, `circuit_breaker/testing`,
+`circuit_breaker/logs` and `circuit_breaker/prometheus` are stable.
+`circuit_breaker/keyed` is experimental: it may change in a minor release.
+Modules under `circuit_breaker/private` are internal. See
+[ADR-0019](docs/decisions/0019-api-review-before-v1.md).
 
 ## Documentation
 

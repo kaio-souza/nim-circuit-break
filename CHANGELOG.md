@@ -16,6 +16,22 @@ All notable changes. Versions follow semantic versioning.
 - CI on Nim 2.0.16, 2.2.4, 2.2.14, 2.4 and devel, and on macOS and Windows
   (ADR-0018).
 
+### Changed (breaking, ADR-0019)
+- `BreakerConfig` fields carry their defaults; `initBreakerConfig` is removed.
+  Write `BreakerConfig(name: "x", failureThreshold: 3)`.
+- Enum values lose their prefixes: `VerdictKind` is `Success`/`Failure`/
+  `Ignore`; `TransitionReason` is `FailureThresholdReached`,
+  `FailureRateReached`, `SlowCallRateReached`, `ServerHint`,
+  `OpenTimeoutElapsed`, `ProbeSucceeded`, `ProbeFailed`, `Manual`;
+  `CallOutcome` is `Succeeded`/`Failed`/`Ignored`/`Rejected`/`ShadowRejected`;
+  `CallResultKind` is `Returned`/`Raised`/`Refused`.
+- Callback types (`ErrorClassifier`, `TransitionCallback`, `CallCallback`) and
+  the Chronos `callAsync` `fn` are `{.gcsafe.}`.
+- Internal modules moved to `circuit_breaker/private`; `newCallTimeoutError`
+  is no longer exported by `circuit_breaker`.
+- `circuit_breaker/keyed` is marked experimental.
+- `consecutiveFailures` and `retryAfter` no longer build a metrics snapshot.
+
 ### Changed
 - Requires Nim >= 2.0.0 (was 2.2.4).
 - Tests require proptest >= 1.0.0.

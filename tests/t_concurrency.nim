@@ -36,10 +36,10 @@ when compileOption("threads"):
   suite "concurrency":
     test "V3/S7/C1/C2/C3: probes limited and metrics consistent under 8 threads":
       gClock = newFakeClock()
-      gBreaker = newCircuitBreaker(initBreakerConfig(policy = FailureRate,
-        failureRateThreshold = 0.2, minimumCalls = 20, windowSize = 50,
-        openTimeout = ms(5), halfOpenMaxProbes = maxProbes,
-        clock = gClock.source))
+      gBreaker = newCircuitBreaker(BreakerConfig(policy: FailureRate,
+        failureRateThreshold: 0.2, minimumCalls: 20, windowSize: 50,
+        openTimeout: ms(5), halfOpenMaxProbes: maxProbes,
+        clock: gClock.source))
       var threads: array[threadCount, Thread[int]]
       for i in 0 ..< threadCount: startThread(threads[i], worker, i)
       joinThreads(threads)

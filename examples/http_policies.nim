@@ -22,20 +22,20 @@ proc classify(e: ref CatchableError): Verdict =
       return countAsFailure(openFor = h.retryAfter)        # server hint
   countAsFailure()
 
-let cfg = initBreakerConfig(
-  name = "payments-api",
-  policy = FailureRate,
-  failureRateThreshold = 0.5,
-  minimumCalls = 10,
-  windowKind = TimeWindow,
-  windowDuration = initDuration(seconds = 30),
-  slowCallDuration = initDuration(seconds = 2),
-  slowCallRateThreshold = 0.8,
-  openTimeout = initDuration(seconds = 5),
-  backoffMultiplier = 2.0,
-  maxOpenTimeout = initDuration(minutes = 2),
-  jitter = 0.2,
-  classifyError = classify)
+let cfg = BreakerConfig(
+  name: "payments-api",
+  policy: FailureRate,
+  failureRateThreshold: 0.5,
+  minimumCalls: 10,
+  windowKind: TimeWindow,
+  windowDuration: initDuration(seconds = 30),
+  slowCallDuration: initDuration(seconds = 2),
+  slowCallRateThreshold: 0.8,
+  openTimeout: initDuration(seconds = 5),
+  backoffMultiplier: 2.0,
+  maxOpenTimeout: initDuration(minutes = 2),
+  jitter: 0.2,
+  classifyError: classify)
 
 for warning in cfg.diagnose: echo "config warning: ", warning
 let cb = newCircuitBreaker(cfg)
@@ -54,14 +54,14 @@ echo "\nwhy it opened: ", cb.explain[^1].reason, ", failure rate ",
   cb.explain[^1].stats.failureRate * 100, "%"
 
 # A Retry-After hint from the server overrides the open timeout.
-let hinted = newCircuitBreaker(initBreakerConfig(name = "hinted",
-  failureThreshold = 100, classifyError = classify))
+let hinted = newCircuitBreaker(BreakerConfig(name: "hinted",
+  failureThreshold: 100, classifyError: classify))
 discard hinted.tryCall(proc(): int = raise httpError(503, initDuration(seconds = 60)))
 echo "\nRetry-After honored: ", hinted.state, ", retry in ", hinted.retryAfter.inSeconds + 1, " s"
 
 # Shadow mode: adopt the breaker in production without blocking anything.
-let shadow = newCircuitBreaker(initBreakerConfig(name = "shadow",
-  failureThreshold = 2, shadowMode = true))
+let shadow = newCircuitBreaker(BreakerConfig(name: "shadow",
+  failureThreshold: 2, shadowMode: true))
 for _ in 1 .. 5: discard shadow.tryCall(proc(): int = raise httpError(500))
 let m = shadow.metrics
 echo "shadow: state ", m.state, ", would have rejected ", m.shadowRejected,

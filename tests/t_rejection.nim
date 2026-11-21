@@ -30,8 +30,8 @@ when compileOption("threads"):
   suite "lock-free rejection":
     test "rejection hint matches the open deadline":
       let clock = newFakeClock()
-      let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-        openTimeout = ms(1000), clock = clock.source))
+      let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+        openTimeout: ms(1000), clock: clock.source))
       discard cb.fail()
       clock.advance(ms(300))
       var p: Permit
@@ -48,8 +48,8 @@ when compileOption("threads"):
 
     test "at the deadline the fast path hands over and admits a probe":
       let clock = newFakeClock()
-      let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-        openTimeout = ms(1000), clock = clock.source))
+      let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+        openTimeout: ms(1000), clock: clock.source))
       discard cb.fail()
       clock.advance(ms(999))
       var p: Permit
@@ -62,8 +62,8 @@ when compileOption("threads"):
 
     test "shadow mode keeps the locked path (it must not reject)":
       let clock = newFakeClock()
-      let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-        openTimeout = ms(1000), clock = clock.source, shadowMode = true))
+      let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+        openTimeout: ms(1000), clock: clock.source, shadowMode: true))
       discard cb.fail()
       var p: Permit
       check cb.tryAcquire(p)
@@ -73,8 +73,8 @@ when compileOption("threads"):
 
     test "real clock: far from the deadline the hint stays within the open period":
       # On Linux this takes the coarse-clock path; elsewhere the precise one.
-      let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-        openTimeout = initDuration(hours = 1), maxOpenTimeout = initDuration(hours = 1)))
+      let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+        openTimeout: initDuration(hours = 1), maxOpenTimeout: initDuration(hours = 1)))
       discard cb.fail()
       for i in 0 ..< 3:
         try:
@@ -86,8 +86,8 @@ when compileOption("threads"):
       check cb.metrics.rejected == 3
 
     test "real clock: a short open period ends on time (precise path near the deadline)":
-      let cb = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-        openTimeout = ms(30), maxOpenTimeout = ms(30)))
+      let cb = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+        openTimeout: ms(30), maxOpenTimeout: ms(30)))
       discard cb.fail()
       var p: Permit
       check not cb.tryAcquire(p)
@@ -98,8 +98,8 @@ when compileOption("threads"):
 
     when compileOption("threads"):
       test "every rejection counted exactly once under 8 threads":
-        gBreaker = newCircuitBreaker(initBreakerConfig(failureThreshold = 1,
-          openTimeout = initDuration(hours = 1), maxOpenTimeout = initDuration(hours = 1)))
+        gBreaker = newCircuitBreaker(BreakerConfig(failureThreshold: 1,
+          openTimeout: initDuration(hours = 1), maxOpenTimeout: initDuration(hours = 1)))
         discard gBreaker.fail()
         gRejected.store(0)
         var threads: array[threadCount, Thread[int]]

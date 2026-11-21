@@ -110,8 +110,8 @@ suite "chronos cancellation (Y3)":
 suite "chronos per-call timeout (T5)":
   test "T5: exceeding callTimeout cancels the call, counts a failure, raises CallTimeoutError":
     slowFinished = false
-    let cb = newCircuitBreaker(initBreakerConfig(name = "slow", failureThreshold = 5,
-      callTimeout = ms(20)))
+    let cb = newCircuitBreaker(BreakerConfig(name: "slow", failureThreshold: 5,
+      callTimeout: ms(20)))
     expect CallTimeoutError:
       discard waitFor cb.callAsync(slowOp)
     check cb.metrics.failures == 1
@@ -120,14 +120,14 @@ suite "chronos per-call timeout (T5)":
     check cb.metrics.successes == 0
 
   test "T5: a call within callTimeout is unaffected":
-    let cb = newCircuitBreaker(initBreakerConfig(name = "fast", callTimeout = ms(500)))
+    let cb = newCircuitBreaker(BreakerConfig(name: "fast", callTimeout: ms(500)))
     check waitFor(cb.callAsync(okOp)) == 42
     check cb.metrics.successes == 1
 
   test "T5: a CallTimeoutError from a nested breaker is classified by the outer one":
-    let inner = newCircuitBreaker(initBreakerConfig(name = "inner", callTimeout = ms(20)))
-    let outer = newCircuitBreaker(initBreakerConfig(name = "outer",
-      classifyError = proc(e: ref CatchableError): Verdict =
+    let inner = newCircuitBreaker(BreakerConfig(name: "inner", callTimeout: ms(20)))
+    let outer = newCircuitBreaker(BreakerConfig(name: "outer",
+      classifyError: proc(e: ref CatchableError): Verdict =
         if e of CallTimeoutError: ignoreCall() else: countAsFailure()))
     proc viaInner(): Future[int] {.async.} =
       var f: Future[int]

@@ -8,11 +8,11 @@ proc flakyService(i: int): string =
   if i in 3 .. 6: raise newException(IOError, "service unavailable")
   "response #" & $i
 
-let cb = newCircuitBreaker(initBreakerConfig(
-  name = "inventory",
-  failureThreshold = 3,
-  openTimeout = initDuration(milliseconds = 200),
-  onTransition = proc(e: TransitionEvent) =
+let cb = newCircuitBreaker(BreakerConfig(
+  name: "inventory",
+  failureThreshold: 3,
+  openTimeout: initDuration(milliseconds = 200),
+  onTransition: proc(e: TransitionEvent) =
     echo "  [", e.breaker, "] ", e.fromState, " -> ", e.toState, " (", e.reason, ")"))
 
 for i in 0 .. 12:

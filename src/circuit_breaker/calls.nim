@@ -50,9 +50,9 @@ proc call*[T](cb: CircuitBreaker; fn: proc(): T; isFailureResult: proc(x: T): bo
 type
   CallResultKind* = enum
     ## Outcome of `tryCall`.
-    crOk        ## `fn` ran and succeeded; `value` holds its result.
-    crRejected  ## The breaker rejected the call; see `rejection`.
-    crFailed    ## `fn` raised; see `error`.
+    Returned  ## `fn` ran and succeeded; `value` holds its result.
+    Refused   ## The breaker rejected the call; see `rejection`.
+    Raised    ## `fn` raised; see `error`.
 
   CallResult*[T] = object
     ## Explicit result of `tryCall` (A3).
@@ -64,7 +64,7 @@ type
 
 proc isOk*[T](r: CallResult[T]): bool {.inline.} =
   ## True when the call ran and succeeded.
-  r.kind == crOk
+  r.kind == Returned
 
 proc tryCall*[T](cb: CircuitBreaker; fn: proc(): T): CallResult[T] =
   ## Never raises `CatchableError`: the outcome is in the result.
@@ -73,12 +73,12 @@ proc tryCall*[T](cb: CircuitBreaker; fn: proc(): T): CallResult[T] =
       cb.call(fn)
     else:
       result.value = cb.call(fn)
-    result.kind = crOk
+    result.kind = Returned
   except CircuitOpenError as e:
-    result.kind = crRejected
+    result.kind = Refused
     result.rejection = e
   except CatchableError as e:
-    result.kind = crFailed
+    result.kind = Raised
     result.error = e
 
 proc tryCall*(cb: CircuitBreaker; fn: proc()): CallResult[void] =

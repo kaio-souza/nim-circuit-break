@@ -56,9 +56,9 @@ suite "lean success path (P2)":
     # clock. It used to compute the deadline from time 0, so the circuit was
     # already past its open period and the next call became a probe.
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(policy = FailureRate,
-      windowKind = CountWindow, windowSize = 10, minimumCalls = 5,
-      failureRateThreshold = 0.5, openTimeout = ms(1000), clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(policy: FailureRate,
+      windowKind: CountWindow, windowSize: 10, minimumCalls: 5,
+      failureRateThreshold: 0.5, openTimeout: ms(1000), clock: clock.source))
     for i in 0 ..< 3: discard cb.fail()
     discard cb.succeed()
     check cb.state == Closed            # 4 calls, below minimumCalls
@@ -75,10 +75,10 @@ suite "lean success path (P2)":
   test "F2: the general path has the same fix (onTransition set, no clock on success)":
     let clock = newFakeClock()
     var events = 0
-    let cb = newCircuitBreaker(initBreakerConfig(policy = FailureRate,
-      windowKind = CountWindow, windowSize = 10, minimumCalls = 5,
-      failureRateThreshold = 0.5, openTimeout = ms(1000), clock = clock.source,
-      onTransition = proc(e: TransitionEvent) = inc events))
+    let cb = newCircuitBreaker(BreakerConfig(policy: FailureRate,
+      windowKind: CountWindow, windowSize: 10, minimumCalls: 5,
+      failureRateThreshold: 0.5, openTimeout: ms(1000), clock: clock.source,
+      onTransition: proc(e: TransitionEvent) = inc events))
     for i in 0 ..< 3: discard cb.fail()
     discard cb.succeed()
     discard cb.succeed()
@@ -90,28 +90,28 @@ suite "lean success path (P2)":
   test "P2: count window with FailureRate matches the general path":
     for seed in 1'i64 .. 200:
       check runScenario(proc(clock: FakeClock; observed: bool): BreakerConfig =
-        initBreakerConfig(policy = FailureRate, windowKind = CountWindow,
-          windowSize = 10, minimumCalls = 5, failureRateThreshold = 0.5,
-          openTimeout = ms(1000), clock = clock.source,
-          onCall = (if observed: (proc(e: CallEvent) = discard) else: nil)),
+        BreakerConfig(policy: FailureRate, windowKind: CountWindow,
+          windowSize: 10, minimumCalls: 5, failureRateThreshold: 0.5,
+          openTimeout: ms(1000), clock: clock.source,
+          onCall: (if observed: (proc(e: CallEvent) = discard) else: nil)),
         seed, 300)
 
   test "P2: time window with FailureRate and slow calls matches the general path":
     for seed in 1'i64 .. 200:
       check runScenario(proc(clock: FakeClock; observed: bool): BreakerConfig =
-        initBreakerConfig(policy = FailureRate, windowKind = TimeWindow,
-          windowDuration = ms(2000), windowBuckets = 4, minimumCalls = 4,
-          failureRateThreshold = 0.6, slowCallDuration = ms(200),
-          slowCallRateThreshold = 0.5, openTimeout = ms(1000),
-          clock = clock.source,
-          onCall = (if observed: (proc(e: CallEvent) = discard) else: nil)),
+        BreakerConfig(policy: FailureRate, windowKind: TimeWindow,
+          windowDuration: ms(2000), windowBuckets: 4, minimumCalls: 4,
+          failureRateThreshold: 0.6, slowCallDuration: ms(200),
+          slowCallRateThreshold: 0.5, openTimeout: ms(1000),
+          clock: clock.source,
+          onCall: (if observed: (proc(e: CallEvent) = discard) else: nil)),
         seed, 300)
 
   test "P2: consecutive policy with slow-call detection matches the general path":
     for seed in 1'i64 .. 200:
       check runScenario(proc(clock: FakeClock; observed: bool): BreakerConfig =
-        initBreakerConfig(failureThreshold = 3, slowCallDuration = ms(150),
-          slowCallRateThreshold = 0.5, minimumCalls = 4, openTimeout = ms(1000),
-          clock = clock.source,
-          onCall = (if observed: (proc(e: CallEvent) = discard) else: nil)),
+        BreakerConfig(failureThreshold: 3, slowCallDuration: ms(150),
+          slowCallRateThreshold: 0.5, minimumCalls: 4, openTimeout: ms(1000),
+          clock: clock.source,
+          onCall: (if observed: (proc(e: CallEvent) = discard) else: nil)),
         seed, 300)

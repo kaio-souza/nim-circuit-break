@@ -67,19 +67,19 @@ stateMachine Breaker:
   model: BreakerModel()
   setup:
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(
-      name = "model", failureThreshold = threshold, openTimeout = ms(baseMs),
-      backoffMultiplier = multiplier, maxOpenTimeout = ms(maxMs),
-      successThreshold = probesToClose, clock = clock.source, seed = 42))
+    let cb = newCircuitBreaker(BreakerConfig(
+      name: "model", failureThreshold: threshold, openTimeout: ms(baseMs),
+      backoffMultiplier: multiplier, maxOpenTimeout: ms(maxMs),
+      successThreshold: probesToClose, clock: clock.source, seed: 42))
 
   command callOk():
     run: cb.succeed()
-    postcondition: result == (if model.admits: crOk else: crRejected)
+    postcondition: result == (if model.admits: Returned else: Refused)
     update: model.record(failed = false)
 
   command callFails():
     run: cb.fail()
-    postcondition: result == (if model.admits: crFailed else: crRejected)
+    postcondition: result == (if model.admits: Raised else: Refused)
     update: model.record(failed = true)
 
   # Up to past the longest open period (8 s), so backoff and its cap are

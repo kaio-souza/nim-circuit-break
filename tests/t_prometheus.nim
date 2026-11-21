@@ -22,9 +22,9 @@ proc body_has_histogram(body: string): bool =
 suite "Prometheus exposition (O6/B3)":
   test "O6: every family is declared once and every sample line is well formed":
     let clock = newFakeClock()
-    let a = newCircuitBreaker(initBreakerConfig(name = "a", clock = clock.source,
-                                                latencyPrecision = 2))
-    let b = newCircuitBreaker(initBreakerConfig(name = "b", clock = clock.source))
+    let a = newCircuitBreaker(BreakerConfig(name: "a", clock: clock.source,
+                                            latencyPrecision: 2))
+    let b = newCircuitBreaker(BreakerConfig(name: "b", clock: clock.source))
     a.call(proc() = clock.advance(ms(3)))
     b.call(proc() = discard)
     let body = renderPrometheus([a, b])
@@ -44,8 +44,8 @@ suite "Prometheus exposition (O6/B3)":
 
   test "O6: exactly one state is 1 for each breaker":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(name = "s", failureThreshold = 1,
-                                                 clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(name: "s", failureThreshold: 1,
+                                             clock: clock.source))
     discard cb.fail()
     let ones = sampleLines(renderPrometheus([cb])).filterIt("circuit_breaker_state{" in it and it.endsWith(" 1"))
     check ones.len == 1
@@ -53,8 +53,8 @@ suite "Prometheus exposition (O6/B3)":
 
   test "O6: histogram buckets are cumulative and end at +Inf equal to the count":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(name = "h", clock = clock.source,
-                                                 latencyPrecision = 4))
+    let cb = newCircuitBreaker(BreakerConfig(name: "h", clock: clock.source,
+                                             latencyPrecision: 4))
     for cost in [ms(1), ms(1), ms(5), ms(50)]:
       cb.call(proc() = clock.advance(cost))
     var last = -1.0
@@ -73,15 +73,15 @@ suite "Prometheus exposition (O6/B3)":
 
   test "O6: label values are escaped":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(name = "say \"hi\"\\n",
-                                                 clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(name: "say \"hi\"\\n",
+                                             clock: clock.source))
     let body = renderPrometheus([cb])
     check "name=\"say \\\"hi\\\"\\\\n\"" in body
 
   test "O6: golden output for a breaker with known state":
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(name = "g", failureThreshold = 2,
-                                                 clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(name: "g", failureThreshold: 2,
+                                             clock: clock.source))
     discard cb.fail()
     discard cb.fail()
     let lines = sampleLines(renderPrometheus([cb]))
@@ -98,8 +98,8 @@ suite "Prometheus exposition (O6/B3)":
     # is it turning away? The exposition answers with the state and the
     # rejected count, which an alert rule can use directly.
     let clock = newFakeClock()
-    let cb = newCircuitBreaker(initBreakerConfig(name = "payments", failureThreshold = 3,
-                                                 clock = clock.source))
+    let cb = newCircuitBreaker(BreakerConfig(name: "payments", failureThreshold: 3,
+                                             clock: clock.source))
     for i in 0 ..< 3:
       discard cb.tryCall(proc() = raise newException(ValueError, "timeout"))
     for i in 0 ..< 5:

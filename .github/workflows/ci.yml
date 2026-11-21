@@ -96,11 +96,15 @@ jobs:
 
       - name: Install Nim (Windows)
         if: runner.os == 'Windows'
+        # PowerShell: Expand-Archive is always there; unzip is not guaranteed.
+        # The C compiler is the MinGW-w64 gcc preinstalled on the runner.
+        shell: pwsh
         run: |
-          curl -sSfL -o "$RUNNER_TEMP/nim.zip" "https://nim-lang.org/download/nim-${{ matrix.nim }}_x64.zip"
-          unzip -q "$RUNNER_TEMP/nim.zip" -d "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/nim-${{ matrix.nim }}/bin" >> "$GITHUB_PATH"
-          echo "$USERPROFILE/.nimble/bin" >> "$GITHUB_PATH"
+          $zip = Join-Path $env:RUNNER_TEMP "nim.zip"
+          Invoke-WebRequest -Uri "https://nim-lang.org/download/nim-${{ matrix.nim }}_x64.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $env:RUNNER_TEMP
+          Add-Content $env:GITHUB_PATH (Join-Path $env:RUNNER_TEMP "nim-${{ matrix.nim }}\bin")
+          Add-Content $env:GITHUB_PATH (Join-Path $env:USERPROFILE ".nimble\bin")
 
       - name: Install Nim (macOS)
         if: runner.os == 'macOS'

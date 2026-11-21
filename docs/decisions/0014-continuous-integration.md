@@ -1,6 +1,6 @@
 # ADR-0014: CI on the official Nim image
 
-- Status: Accepted
+- Status: Accepted; versions and platforms superseded by [ADR-0018](0018-supported-nim-versions-and-platforms.md)
 - Date: 2026-11-19
 - Requirements: Q6, Q8, C4, D3
 

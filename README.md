@@ -205,7 +205,7 @@ Not yet published to the Nimble index. Install from the repository:
 nimble install https://github.com/kaio-souza/nim-circuit-break
 ```
 
-Requires Nim >= 2.2.4. No dependencies outside the standard library.
+Requires Nim >= 2.0. Tested on Nim 2.0, 2.2 and 2.4, on Linux, macOS and Windows. No dependencies outside the standard library.
 
 ## License
 

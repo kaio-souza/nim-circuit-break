@@ -19,12 +19,20 @@ jobs:
     timeout-minutes: 15
     # Official Nim image pinned by version: no third-party actions.
     container: nimlang/nim:${{ matrix.nim }}
+    # devel is a heads-up for upcoming Nim changes, not a release gate.
+    continue-on-error: ${{ matrix.nim == 'devel' }}
     strategy:
       fail-fast: false
       matrix:
-        nim: ['2.2.4']
+        # 2.2.4: oldest 2.2 supported by the test dependencies; 2.2.14: latest
+        # 2.2; 2.4.0: newest 2.4 image (2.4.2 is covered on macOS and Windows).
+        nim: ['2.2.4', '2.2.14', '2.4.0']
         mm: [orc, arc]
         threads: ['on', 'off']
+        include:
+          - nim: devel
+            mm: orc
+            threads: 'on'
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +44,78 @@ jobs:
 
       - name: Tests (debug, with runtime checks)
         run: nimble test -y --mm:${{ matrix.mm }} --threads:${{ matrix.threads }}
+
+  test-nim-2-0:
+    # The package supports Nim 2.0, but proptest (test-only) needs 2.2.4, so
+    # `nimble test` cannot resolve it here: every test except the model test
+    # runs directly with nim. Official binary from nim-lang.org, pinned.
+    name: test (nim 2.0.16, orc, threads=on, no model test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NIM_VERSION: 2.0.16
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nim
+        run: |
+          curl -sSfL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.xz" | tar xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nim-${NIM_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
+
+      - name: Install Chronos (optional module, tested by t_chronos)
+        run: nimble install -y chronos
+
+      - name: Tests (release and debug)
+        run: |
+          for f in tests/t*.nim; do
+            [ "$f" = tests/t_model.nim ] && continue
+            nim c -r --hints:off --threads:on -d:release "$f"
+            nim c -r --hints:off --threads:on "$f"
+          done
+
+  test-os:
+    name: test (${{ matrix.os }}, nim ${{ matrix.nim }}, orc, threads=on)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Official Windows binary from nim-lang.org, pinned.
+          - os: windows-latest
+            nim: 2.4.2
+          # nim-lang.org ships no macOS binary: Homebrew's current Nim.
+          - os: macos-latest
+            nim: brew
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nim (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/nim.zip" "https://nim-lang.org/download/nim-${{ matrix.nim }}_x64.zip"
+          unzip -q "$RUNNER_TEMP/nim.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nim-${{ matrix.nim }}/bin" >> "$GITHUB_PATH"
+          echo "$USERPROFILE/.nimble/bin" >> "$GITHUB_PATH"
+
+      - name: Install Nim (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install nim
+          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
+
+      - name: Nim version
+        run: nim --version
+
+      - name: Tests (release)
+        run: nimble test -y --mm:orc --threads:on -d:release
+
+      - name: Tests (debug, with runtime checks)
+        run: nimble test -y --mm:orc --threads:on
 
   examples-and-docs:
     name: examples and docs

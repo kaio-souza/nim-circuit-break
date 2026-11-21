@@ -10,7 +10,7 @@ skipDirs      = @["tests", "benchmarks", "examples", "scripts", "docs"]
 
 # Dependencies
 
-requires "nim >= 2.2.4"
+requires "nim >= 2.0.0"
 
 # Test-only: the model test (V2/Q5) uses proptest's stateful testing.
 taskRequires "test", "https://github.com/kaio-souza/nim-proptest >= 1.0.0"

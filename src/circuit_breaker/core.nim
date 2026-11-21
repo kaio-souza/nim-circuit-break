@@ -254,8 +254,8 @@ proc `=dup`*(src: Permit): Permit {.error: "a Permit cannot be copied".}
 proc grantLocked(b: BreakerPtr; gen: int; now: int64; probe, shadow: bool): Permit {.inline.} =
   Permit(cb: b, gen: gen, startNs: now, probe: probe, shadow: shadow)
 
-proc rejectFast(b: BreakerPtr; s0: CircuitState; retryAfter: var int64;
-                rejState: var CircuitState): bool {.inline.} =
+proc tryRejectFast(b: BreakerPtr; s0: CircuitState; retryAfter: var int64;
+                   rejState: var CircuitState): bool {.inline.} =
   ## BM3: rejections without the lock, kept out of `acquireImpl` so the common
   ## case does not pay for that proc's locals and cleanup. ForcedOpen needs no
   ## clock. For Open, the state was loaded (acquire) before the deadline, so
@@ -346,7 +346,7 @@ proc acquire*(cb: CircuitBreaker): Permit {.raises: [CircuitOpenError].} =
     var retryAfter = 0'i64
     var s = Closed
     let s0 = b.loadState().state
-    if s0 in {Open, ForcedOpen} and b.rejectFast(s0, retryAfter, s):
+    if s0 in {Open, ForcedOpen} and b.tryRejectFast(s0, retryAfter, s):
       raise b.newOpenError(s, retryAfter)
     if not b.acquireImpl(result, retryAfter, s):
       raise b.newOpenError(s, retryAfter)
@@ -361,7 +361,7 @@ proc tryAcquire*(cb: CircuitBreaker; permit: var Permit): bool =
     var s = Closed
     let b = addr cb[]
     let s0 = b.loadState().state
-    if s0 in {Open, ForcedOpen} and b.rejectFast(s0, retryAfter, s): return false
+    if s0 in {Open, ForcedOpen} and b.tryRejectFast(s0, retryAfter, s): return false
     b.acquireImpl(permit, retryAfter, s)
 
 # ---------------------------------------------------------------- record

@@ -13,6 +13,12 @@ All notable changes. Versions follow semantic versioning.
   `CallTimeoutError`.
 - D2: transition table in the README. D3: every exported symbol documented,
   checked in CI.
+- CI on Nim 2.0.16, 2.2.4, 2.2.14, 2.4 and devel, and on macOS and Windows
+  (ADR-0018).
+
+### Changed
+- Requires Nim >= 2.0.0 (was 2.2.4).
+- Tests require proptest >= 1.0.0.
 
 ## 0.3.0 - 2026-11-20
 

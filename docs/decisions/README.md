@@ -21,6 +21,7 @@ Each file records one decision: its context, what was decided, the consequences,
 | [0015](0015-lean-locked-path-for-windowed-policies.md) | Lock-free success for the consecutive policy; lean locked path for windowed policies (P2 scope) | Accepted |
 | [0016](0016-chronos-cancellation-and-timeouts.md) | Chronos module; cancellations not counted by default; `callTimeout` for the async APIs | Accepted |
 | [0017](0017-fuzzing-without-a-dedicated-library.md) | No dedicated fuzzing library; ThreadSanitizer in CI, libFuzzer harness against the model | Accepted |
+| [0018](0018-supported-nim-versions-and-platforms.md) | Nim >= 2.0; CI on Nim 2.0 to devel, Linux, macOS and Windows | Accepted |
 
 ## Template
 

@@ -10,7 +10,7 @@ An infrastructure library ends up in many projects; every transitive dependency 
 
 ## Decision
 
-- The core uses **only the standard library**. Requires Nim >= 2.2.4.
+- The core uses **only the standard library**. Requires Nim >= 2.0.0 (ADR-0018; was 2.2.4).
 - Optional features live in explicitly imported modules: `circuit_breaker/async`, `circuit_breaker/keyed`, `circuit_breaker/testing`. Code that does not import them does not pay for them.
 - `callAsync` supports `std/asyncdispatch` in v0.2. Chronos (Y2) will come in a separate module, again without forcing the dependency on those who do not use it.
 
@@ -21,4 +21,4 @@ An infrastructure library ends up in many projects; every transitive dependency 
 
 ## Evidence
 
-`circuit_breaker.nimble`: only `requires "nim >= 2.2.4"`. `t_async`: Y1/A5, Y1.
+`circuit_breaker.nimble`: only `requires "nim >= 2.0.0"`. `t_async`: Y1/A5, Y1.

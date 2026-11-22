@@ -35,6 +35,17 @@ jobs:
             threads: 'on'
     steps:
       - uses: actions/checkout@v4
+        if: matrix.nim != 'devel'
+
+      # The devel image's glibc is too old for the node24 runtime that
+      # actions/checkout needs, so that job clones with plain git.
+      - name: Checkout with git (devel image)
+        if: matrix.nim == 'devel'
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init -q "$GITHUB_WORKSPACE" && cd "$GITHUB_WORKSPACE"
+          git fetch -q --depth=1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
 
       - name: Allow git in the container workspace (nimble reads the revision)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"

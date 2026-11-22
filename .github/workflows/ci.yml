@@ -46,10 +46,10 @@ jobs:
         run: nimble test -y --mm:${{ matrix.mm }} --threads:${{ matrix.threads }}
 
   test-nim-2-0:
-    # The package supports Nim 2.0, but proptest (test-only) needs 2.2.4, so
-    # `nimble test` cannot resolve it here: every test except the model test
-    # runs directly with nim. Official binary from nim-lang.org, pinned.
-    name: test (nim 2.0.16, orc, threads=on, no model test)
+    # The package supports Nim 2.0, but proptest and nim-linear (test-only)
+    # need Nim 2.2, so `nimble test` cannot resolve them here: every test
+    # except the model and linearizability tests runs directly with nim. Official binary from nim-lang.org, pinned.
+    name: test (nim 2.0.16, orc, threads=on, no model/linearizability test)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -70,6 +70,7 @@ jobs:
         run: |
           for f in tests/t*.nim; do
             [ "$f" = tests/t_model.nim ] && continue
+            [ "$f" = tests/t_linearizable.nim ] && continue
             nim c -r --hints:off --threads:on -d:release "$f"
             nim c -r --hints:off --threads:on "$f"
           done
@@ -187,7 +188,12 @@ jobs:
     name: ThreadSanitizer (concurrency tests)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container: nimlang/nim:2.2.4
+    container:
+      image: nimlang/nim:2.2.4
+      # TSan cannot map its shadow memory with the runner's high ASLR entropy
+      # ("unexpected memory mapping"); setarch -R turns ASLR off for the test
+      # binaries, which needs the personality syscall that seccomp blocks.
+      options: --security-opt seccomp=unconfined
     steps:
       - uses: actions/checkout@v4
 
@@ -203,9 +209,10 @@ jobs:
           TSAN_OPTIONS: halt_on_error=1:exitcode=66
         run: |
           for t in t_concurrency t_linearizable t_keyed; do
-            nim c -r --hints:off --threads:on --mm:orc -d:release --debugger:native \
+            nim c --hints:off --threads:on --mm:orc -d:release --debugger:native \
               --passC:-fsanitize=thread --passL:-fsanitize=thread \
               -o:/tmp/tsan_$t tests/$t.nim
+            setarch "$(uname -m)" -R /tmp/tsan_$t
           done
 
   coverage:

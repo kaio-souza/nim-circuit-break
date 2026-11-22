@@ -6,6 +6,14 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 cd "$root"
+# lcov 2.x needs these to accept Nim's generated C; lcov 1.x rejects them.
+lcov_opts=()
+if lcov --version | grep -qE 'version 2\.'; then
+  lcov_opts=(--rc geninfo_unexecuted_blocks=1 --ignore-errors mismatch,gcov,source,inconsistent)
+  merge_opts=(--ignore-errors inconsistent)
+else
+  merge_opts=()
+fi
 captures=()
 for f in tests/t_*.nim; do
   name=$(basename "$f" .nim)
@@ -14,10 +22,10 @@ for f in tests/t_*.nim; do
     --passC:--coverage --passL:--coverage --nimcache:"$work/nc_$name" \
     -o:"$work/$name" "$f" > "$work/$name.log" 2>&1 || { cat "$work/$name.log" >&2; exit 1; }
   lcov --quiet --capture --directory "$work/nc_$name" --output-file "$work/$name.info" \
-    --rc geninfo_unexecuted_blocks=1 --ignore-errors mismatch,gcov,source,inconsistent 2>/dev/null
+    ${lcov_opts[@]+"${lcov_opts[@]}"} 2>/dev/null
   captures+=(--add-tracefile "$work/$name.info")
 done
-lcov --quiet "${captures[@]}" --output-file "$work/all.info" --ignore-errors inconsistent
+lcov --quiet "${captures[@]}" --output-file "$work/all.info" ${merge_opts[@]+"${merge_opts[@]}"}
 lcov --quiet --extract "$work/all.info" "$root/src/*" --output-file "$work/src.info"
 echo "## Coverage of src/"
 echo

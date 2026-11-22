@@ -92,20 +92,20 @@ Phase B, async:
 - [x] T5: per-call timeout for the async APIs (`callTimeout`); finished calls arm no timer
 
 Phase C, CI and evidence:
-- [ ] Q6: CI on macOS and Windows, Nim `devel`
-- [ ] Zero-warnings gate in the four build modes (v1.0 criterion 2)
-- [ ] README quickstart built in CI after `nimble install` (D1, v1.0 criterion 5)
-- [ ] Q7: code coverage
-- [ ] Nightly 1000 runs of the model and concurrency tests (v1.0 criterion 4)
+- [x] Q6: CI on macOS and Windows, Nim `devel`
+- [x] Zero-warnings gate in the four build modes plus `cbDisabled` (v1.0 criterion 2); also ThreadSanitizer on the concurrency tests
+- [x] README quickstart built in CI after `nimble install` (D1, v1.0 criterion 5)
+- [x] Q7: code coverage report (gcc + lcov); a minimum is set after the first CI value
+- [x] Nightly 1000 runs of the model and concurrency tests (v1.0 criterion 4); it still has to pass once on GitHub
 
 Phase D, performance gate:
-- [ ] R4: benchmark regression gate (base and PR measured interleaved in the same job, see SPEC 27.4)
+- [x] R4: benchmark regression gate, [ADR-0020](decisions/0020-performance-regression-gate.md); limit still to be calibrated on GitHub's runners
 
 Phase E, documentation and examples:
-- [ ] D3: publish `nim doc` (GitHub Pages)
-- [ ] D4: parameter selection guide and pitfalls
-- [ ] D5: database, metrics, fallback and Chronos examples
-- [ ] I4/D8: concept equivalence table with other languages
+- [x] D3: publish `nim doc` (GitHub Pages) on tags; needs the owner to enable Pages
+- [x] D4: parameter selection guide and pitfalls (`TUNING.md`)
+- [x] D5: database, metrics, fallback and Chronos examples
+- [x] I4/D8: concept equivalence table (`EQUIVALENCE.md`); library versions to re-check before v1.0
 
 Decisions:
 - [x] P2 (P0): amended by [ADR-0015](decisions/0015-lean-locked-path-for-windowed-policies.md) (D-1)

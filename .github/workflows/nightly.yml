@@ -1,0 +1,39 @@
+name: Nightly
+
+# Criterion 4: the model and concurrency tests, 1000 runs each, no failure.
+# A failing run prints the full output of the first failure (seed and
+# shrunk sequence for the model test).
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs per test
+        default: '1000'
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    name: ${{ matrix.test }} x runs (${{ matrix.mm }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container: nimlang/nim:2.2.4
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [t_model, t_concurrency]
+        mm: [orc, arc]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Allow git in the container workspace (nimble reads the revision)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install test dependencies
+        run: nimble install -y https://github.com/kaio-souza/nim-proptest@'>= 1.0.0' https://github.com/kaio-souza/nim-linear chronos
+
+      - name: Repeat
+        run: scripts/repeat_tests.sh tests/${{ matrix.test }}.nim ${{ github.event.inputs.runs || '1000' }} --mm:${{ matrix.mm }} -d:release --path:src

@@ -1,0 +1,44 @@
+name: Performance gate
+
+# R4 (ADR-0020): the PR and its merge base are built and measured in the same
+# job, interleaved, so runner noise hits both sides. Fails on a slowdown seen
+# in every round or on an allocation in a zero-allocation benchmark.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      aa:
+        description: 'A/A run (base against itself) to measure runner noise'
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  benchcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Allow git in the container workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Compare against the merge base
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            base=$(git merge-base HEAD "origin/${{ github.base_ref }}")
+            nim r --hints:off scripts/benchcheck.nim --base="$base" | tee /tmp/benchcheck.txt
+          elif [ "${{ github.event.inputs.aa }}" = true ]; then
+            nim r --hints:off scripts/benchcheck.nim --aa | tee /tmp/benchcheck.txt
+          else
+            nim r --hints:off scripts/benchcheck.nim | tee /tmp/benchcheck.txt
+          fi
+
+      - name: Publish the comparison
+        if: always()
+        run: |
+          { echo '## Performance gate'; echo '```'; cat /tmp/benchcheck.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

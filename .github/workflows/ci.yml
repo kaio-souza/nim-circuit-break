@@ -147,3 +147,82 @@ jobs:
 
       - name: Public API fully documented (D3)
         run: nim r --hints:off scripts/check_docs.nim
+
+  warnings:
+    name: zero warnings in src/ (criterion 2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chronos (so its module is checked too)
+        run: nimble install -y chronos
+
+      - name: Type-check every module in every mode
+        run: nim r --hints:off scripts/check_warnings.nim
+
+  quickstart:
+    name: README quickstart after nimble install (D1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Allow git in the container workspace (nimble reads the revision)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install the package from the checkout
+        run: nimble install -y
+
+      - name: Build the README snippets against the installed package
+        # Run from a scratch directory: nothing resolves through ../src.
+        run: |
+          work=$(mktemp -d)
+          cd "$work"
+          nim r --hints:off "$GITHUB_WORKSPACE/scripts/check_readme.nim" "$work/snippets"
+
+  tsan:
+    name: ThreadSanitizer (concurrency tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Allow git in the container workspace (nimble reads the revision)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install test dependencies
+        run: nimble install -y https://github.com/kaio-souza/nim-proptest@'>= 1.0.0' https://github.com/kaio-souza/nim-linear chronos
+
+      - name: Run the thread tests under ThreadSanitizer (gcc)
+        # Any TSan report fails the step (exitcode=66, halt_on_error=1).
+        env:
+          TSAN_OPTIONS: halt_on_error=1:exitcode=66
+        run: |
+          for t in t_concurrency t_linearizable t_keyed; do
+            nim c -r --hints:off --threads:on --mm:orc -d:release --debugger:native \
+              --passC:-fsanitize=thread --passL:-fsanitize=thread \
+              -o:/tmp/tsan_$t tests/$t.nim
+          done
+
+  coverage:
+    name: coverage (Q7)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Allow git in the container workspace (nimble reads the revision)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install test dependencies and lcov
+        run: |
+          nimble install -y https://github.com/kaio-souza/nim-proptest@'>= 1.0.0' https://github.com/kaio-souza/nim-linear chronos
+          apt-get update -qq && apt-get install -y -qq lcov
+
+      - name: Measure and report
+        run: scripts/coverage.sh >> "$GITHUB_STEP_SUMMARY"

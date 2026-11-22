@@ -4,6 +4,7 @@ A circuit breaker for Nim, built to be correct first and fast second, with
 evidence for both: every feature has tests that cite its requirement ID, and
 every performance claim below comes from a benchmark in this repository.
 
+<!-- check:readme -->
 ```nim
 import circuit_breaker, std/times
 
@@ -54,6 +55,7 @@ Failures of your function propagate unchanged; a rejected call raises
 
 ## Usage
 
+<!-- check:readme -->
 ```nim
 import circuit_breaker, std/times
 
@@ -94,7 +96,8 @@ echo cb.report
 ```
 
 More in [`examples/`](examples): `basic.nim`, `http_policies.nim`,
-`async_keyed.nim`, `composition.nim` (retry, backoff, bulkhead and timeout
+`database_pool.nim`, `fallback.nim`, `metrics_endpoint.nim`, `async_keyed.nim`,
+`chronos_basic.nim`, `composition.nim` (retry, backoff, bulkhead and timeout
 around a breaker; see [`docs/COMPOSITION.md`](docs/COMPOSITION.md)).
 
 ## States
@@ -202,6 +205,8 @@ Modules under `circuit_breaker/private` are internal. See
 - [Architecture](docs/ARCHITECTURE.md): modules, call flow, concurrency model.
 - [Design decisions](docs/decisions/README.md): one ADR per technical choice.
 - [Specification](docs/SPEC.md): every requirement with its ID.
+- [Tuning guide](docs/TUNING.md): how to choose each setting, and the common pitfalls.
+- [Equivalence](docs/EQUIVALENCE.md): mapping to Resilience4j, Polly, gobreaker, pybreaker and opossum.
 - [Composition](docs/COMPOSITION.md): retry, backoff, bulkhead and timeout around a breaker.
 - [Plan to v1.0](docs/PLAN.md): the work left before v1.0.
 - [Changelog](CHANGELOG.md).

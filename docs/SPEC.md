@@ -354,7 +354,7 @@ Sanitizers (ASan/TSan), repeated stress, coverage (gcov/lcov), macOS/Windows and
 
 The actual layout of `tests/` and `benchmarks/` is in [`ARCHITECTURE.md`](ARCHITECTURE.md#tests-and-benchmarks).
 
-Nimble tasks: `nimble test`, `nimble bench` and `nimble trace` (validates the matrix). `nimble benchcheck` (baseline comparison) comes with the R4 gate.
+Nimble tasks: `nimble test`, `nimble bench` and `nimble trace` (validates the matrix). `nimble benchcheck` runs the R4 gate (ADR-0020).
 
 ## 29. Definition of Done per feature
 

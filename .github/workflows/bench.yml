@@ -1,8 +1,8 @@
 name: Benchmarks
 
 # Informational: publishes the numbers and never fails the build.
-# A regression gate comes once there is a low-noise method
-# (base and PR measured in the same job). See docs/decisions/0013.
+# The regression gate is benchcheck.yml (ADR-0020); this one also covers the
+# thread, async and Chronos suites, which are too noisy to gate.
 on:
   push:
     branches: [master]

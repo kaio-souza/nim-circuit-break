@@ -14,7 +14,7 @@ Performance numbers are only worth something if they are reproducible and measur
 - Flags: `-d:release --opt:speed --threads:on`.
 - **Timings measured with ORC** (Nim's default). **Allocations measured with ARC** and `-d:nimAllocStats`: in Nim 2.2.4, ORC with `-d:nimAllocStats` crashes when re-raising exceptions (minimal reproduction in [`docs/upstream/repro_orc_allocstats.nim`](../upstream/repro_orc_allocstats.nim)). ARC and ORC make the same allocations in this code, which creates no cycles.
 - The suite also runs compiled with `-d:cbDisabled` to measure the baseline cost.
-- In CI, the benchmark workflow is **informational**: it publishes the numbers in the job summary and never fails. The regression gate (R4) will measure base and PR in the same job.
+- In CI, the benchmark workflow is **informational**: it publishes the numbers in the job summary and never fails. The regression gate (R4) measures base and PR in the same job: see [ADR-0020](0020-performance-regression-gate.md).
 - The README publishes the numbers with date, hardware, Nim version and flags.
 
 ## Consequences

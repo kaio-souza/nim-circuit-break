@@ -77,17 +77,17 @@ Script rules:
 | Q3 | Edge cases | done | CI | n/a | |
 | Q4 | Concurrency tests | done | CI | n/a | via V3 |
 | Q5 | Model test | done | t_model | n/a | see V2 |
-| Q6 | Multi-platform CI | partial | CI | n/a | Linux only for now (SPEC 27.5) |
-| Q7 | Coverage | deferred | | | |
+| Q6 | Multi-platform CI | done | CI | n/a | Linux (Nim 2.0 to devel), macOS, Windows; ADR-0018 |
+| Q7 | Coverage | partial | CI | n/a | `scripts/coverage.sh`: gcc `--coverage` + lcov, per-file table in the job summary; the script is not yet run on a runner, and a minimum is set after the first measured value (plan D-3) |
 | Q8 | Examples compiled in CI | done | CI | n/a | |
-| D1 | README in one language, quickstart via `nimble install` | partial | CI | n/a | README in English; quickstart not yet built in CI after `nimble install` (plan phase C) |
+| D1 | README in one language, quickstart via `nimble install` | partial | CI | n/a | README in English; README snippets marked `<!-- check:readme -->` are built in CI against the `nimble install`ed package (`scripts/check_readme.nim`); stays partial until the package is on the Nimble index |
 | D2 | State diagram and transition table | done | CI | n/a | README "States": diagram and transition table; SPEC §12 |
 | D3 | Doc comments on the public API, published `nim doc` | partial | CI | n/a | 97 of 97 exported symbols documented, checked by `scripts/check_docs.nim` in CI; not yet published (Pages, D-4) |
-| D4 | Parameter guide and pitfalls | pending | | | plan phase E |
-| D5 | Examples: HTTP, database, async, fallback, metrics | partial | CI | n/a | HTTP, async, composition compiled in CI; database, metrics, fallback missing (plan phase E) |
+| D4 | Parameter guide and pitfalls | done | CI | n/a | `docs/TUNING.md`, each recommendation tied to a test |
+| D5 | Examples: HTTP, database, async, fallback, metrics | done | CI | n/a | `http_policies`, `database_pool`, `async_keyed`, `chronos_basic`, `fallback`, `metrics_endpoint`, `composition`, all compiled in CI |
 | D6 | CHANGELOG and semantic versioning | done | CI | n/a | `CHANGELOG.md`; tags v0.2.0, v0.3.0 |
 | D7 | LICENSE, `.gitignore`, git repository | done | CI | n/a | `LICENSE` (MIT), `.gitignore` excludes binaries |
-| D8 | Concept and parameter mapping to other languages | pending | | | = I4, plan phase E |
+| D8 | Concept and parameter mapping to other languages | done | CI | n/a | = I4; `docs/EQUIVALENCE.md` |
 | E1 | `call`/`tryCall`/`callOr` | done | t_api | BM1 | |
 | E2 | RAII guard | done | t_api, t_values | BM6 | |
 | E3 | `withBreaker` | done | t_api | BM6 | |
@@ -113,7 +113,7 @@ Script rules:
 | B5 | Tracing | deferred | | | |
 | R1 | Reproducible benchmarks | done | CI | BM0 | |
 | R3 | Atomics and padding | done | CI | BM2 | atomics and padding (P5) |
-| R4 | Regression gate | deferred | | | SPEC 27.4 |
+| R4 | Regression gate | done | CI | BM0 | `nimble benchcheck`, ADR-0020; `.github/workflows/benchcheck.yml` on every PR |
 | Y1 | `callAsync` (asyncdispatch) | done | t_async | n/a | |
 | Y2 | Chronos | done | t_chronos | BM14 | `circuit_breaker/chronos_async`; Chronos not a package dependency (ADR-0016) |
 | Y3 | Cancellation | done | t_chronos | BM14 | Chronos; not counted by default (`onCancel`); `asyncdispatch` has no cancellation |
@@ -121,7 +121,7 @@ Script rules:
 | I1 | Composition guide | done | CI | n/a | `docs/COMPOSITION.md`; `examples/composition.nim` compiled in CI (Q8) |
 | I2 | HTTP/web adapters | deferred | | | |
 | I3 | C API | deferred | | | |
-| I4 | Concept equivalence with other languages | deferred | | | |
+| I4 | Concept equivalence with other languages | done | CI | n/a | `docs/EQUIVALENCE.md`; the library versions are to be re-checked before v1.0 (plan D-6) |
 | N1 | Shadow mode | done | t_api, t_values | BM8 | |
 | N2 | Keyed breakers | done | t_keyed, t_values | BM7 | multi-thread needs `--mm:atomicArc` |
 | N3 | `-d:cbDisabled` | done | t_cbdisabled | BM8 | |

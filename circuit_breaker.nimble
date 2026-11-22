@@ -41,3 +41,9 @@ task trace, "Check the traceability matrix (EV1/EV2)":
 
 task doccheck, "Check that every exported symbol has a doc comment (D3)":
   exec "nim r --hints:off scripts/check_docs.nim"
+
+task benchcheck, "Performance gate: base vs change, interleaved (R4, ADR-0020)":
+  exec "nim r --hints:off scripts/benchcheck.nim"
+
+task readmecheck, "Check the README snippets against the installed package (D1)":
+  exec "d=$(mktemp -d) && nim r --hints:off scripts/check_readme.nim $d/snippets"

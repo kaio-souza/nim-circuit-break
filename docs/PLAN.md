@@ -43,8 +43,10 @@ vary by 2x.
 
 ## 3. Priorities (revised 2026-11-20)
 
-Phases A and B are done. The remaining work is ranked below; the phases in
-section 4 describe each item.
+Phases A to E are implemented (2026-11-22). What is left is evidence that only
+GitHub can give: the new workflows have not run on a runner yet, the nightly
+job must pass once, the benchmark limit needs calibration there (ADR-0020),
+and the owner actions D-4 (enable Pages) and D-5 (file the ORC issue).
 
 | Priority | Item | Status / scope | Phase |
 |---|---|---|---|

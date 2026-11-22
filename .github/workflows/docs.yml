@@ -1,0 +1,48 @@
+name: Docs
+
+# D3 (plan D-4): publishes `nim doc` to GitHub Pages when a version is tagged.
+# The owner enables Pages once: Settings > Pages > Source: GitHub Actions.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: nimlang/nim:2.2.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chronos (its module is documented too)
+        run: nimble install -y chronos
+
+      - name: Generate the API documentation
+        run: nim doc --project --index:on --outdir:htmldocs src/circuit_breaker.nim
+
+      - name: Redirect the root to the main module
+        run: echo '<meta http-equiv="refresh" content="0; url=circuit_breaker.html">' > htmldocs/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: htmldocs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

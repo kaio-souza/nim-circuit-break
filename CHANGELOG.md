@@ -16,6 +16,18 @@ All notable changes. Versions follow semantic versioning.
 - CI on Nim 2.0.16, 2.2.4, 2.2.14, 2.4 and devel, and on macOS and Windows
   (ADR-0018).
 
+- Quality gates in CI: zero warnings in `src/` (`scripts/check_warnings.nim`),
+  README snippets built against the `nimble install`ed package
+  (`scripts/check_readme.nim`), ThreadSanitizer on the concurrency tests,
+  coverage report (`scripts/coverage.sh`), and a nightly job that repeats the
+  model and concurrency tests 1000 times.
+- R4: `nimble benchcheck`, a performance gate that compares the pull request
+  with its merge base, interleaved, plus an allocation gate (ADR-0020).
+- D3: `nim doc` published to GitHub Pages on tags.
+- D4: `docs/TUNING.md`. D8/I4: `docs/EQUIVALENCE.md`.
+- D5: examples `database_pool`, `fallback`, `metrics_endpoint` and
+  `chronos_basic`.
+
 ### Changed (breaking, ADR-0019)
 - `BreakerConfig` fields carry their defaults; `initBreakerConfig` is removed.
   Write `BreakerConfig(name: "x", failureThreshold: 3)`.

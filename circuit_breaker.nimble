@@ -15,7 +15,7 @@ requires "nim >= 2.0.0"
 # Test-only: the model test (V2/Q5) uses proptest's stateful testing.
 taskRequires "test", "https://github.com/kaio-souza/nim-proptest >= 1.0.0"
 # Test-only: the linearizability test (t_linearizable) checks recorded histories.
-taskRequires "test", "https://github.com/kaio-souza/nim-linear"
+taskRequires "test", "https://github.com/kaio-souza/nim-linear >= 0.1.0"
 # Test and benchmark only: the optional Chronos module (Y2) is not a dependency
 # of the package; programs that import it install Chronos themselves.
 taskRequires "test", "chronos >= 4.0.0"

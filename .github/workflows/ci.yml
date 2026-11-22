@@ -19,8 +19,6 @@ jobs:
     timeout-minutes: 15
     # Official Nim image pinned by version: no third-party actions.
     container: nimlang/nim:${{ matrix.nim }}
-    # devel is a heads-up for upcoming Nim changes, not a release gate.
-    continue-on-error: ${{ matrix.nim == 'devel' }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,23 +27,8 @@ jobs:
         nim: ['2.2.4', '2.2.14', '2.4.0']
         mm: [orc, arc]
         threads: ['on', 'off']
-        include:
-          - nim: devel
-            mm: orc
-            threads: 'on'
     steps:
       - uses: actions/checkout@v4
-        if: matrix.nim != 'devel'
-
-      # The devel image's glibc is too old for the node24 runtime that
-      # actions/checkout needs, so that job clones with plain git.
-      - name: Checkout with git (devel image)
-        if: matrix.nim == 'devel'
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git init -q "$GITHUB_WORKSPACE" && cd "$GITHUB_WORKSPACE"
-          git fetch -q --depth=1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
-          git checkout -q FETCH_HEAD
 
       - name: Allow git in the container workspace (nimble reads the revision)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -55,6 +38,35 @@ jobs:
 
       - name: Tests (debug, with runtime checks)
         run: nimble test -y --mm:${{ matrix.mm }} --threads:${{ matrix.threads }}
+
+  test-devel:
+    # A heads-up for upcoming Nim changes, not a release gate. The
+    # nimlang/nim:devel image is stale (old glibc and nimble), so this uses the
+    # official nightly build from nim-lang/nightlies.
+    name: test (nim devel, orc, threads=on)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nim devel (official nightly)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download latest-devel -R nim-lang/nightlies -p 'linux_x64.tar.xz' -D "$RUNNER_TEMP"
+          tar xJf "$RUNNER_TEMP/linux_x64.tar.xz" -C "$RUNNER_TEMP"
+          echo "$(ls -d "$RUNNER_TEMP"/nim-*/)bin" >> "$GITHUB_PATH"
+          echo "$HOME/.nimble/bin" >> "$GITHUB_PATH"
+
+      - name: Nim version
+        run: nim --version
+
+      - name: Tests (release)
+        run: nimble test -y --mm:orc --threads:on -d:release
+
+      - name: Tests (debug, with runtime checks)
+        run: nimble test -y --mm:orc --threads:on
 
   test-nim-2-0:
     # The package supports Nim 2.0, but proptest and nim-linear (test-only)

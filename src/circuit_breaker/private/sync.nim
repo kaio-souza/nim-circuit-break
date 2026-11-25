@@ -1,7 +1,12 @@
 ## Internal: locking that compiles away without `--threads:on`.
 
-import std/locks
-export locks
+when defined(nimlinearIntercept):
+  # Test builds only: see the import note in core.nim.
+  import nimlinear/intercept
+  export intercept
+else:
+  import std/locks
+  export locks
 
 const threadsOn* = compileOption("threads")
   ## Whether locks are compiled in.

@@ -5,6 +5,15 @@ All notable changes. Versions follow semantic versioning.
 ## Unreleased
 
 ### Added
+- `tests/t_linearizable_sched`: linearizability rounds under nim-linear's PCT
+  scheduler, with the breaker's atomics and lock intercepted
+  (`-d:nimlinearIntercept`, test builds only: `core` and `private/sync`
+  import `nimlinear/intercept` instead of `std/atomics`/`std/locks`). It
+  finds a probe-limit race injected between two critical sections within
+  12 rounds, which the OS scheduler showed once in 6 000.
+- `tests/t_linearizable` uses nim-linear's `runRounds` (initial state per
+  round, `RoundInfo`, shrunk and saved failing history); the shared model
+  lives in `tests/linearizable_common.nim`.
 - Y2: Chronos support in `circuit_breaker/chronos_async` (Chronos is not a
   package dependency; install it to use the module).
 - Y3: with Chronos, cancelling a call cancels `fn`, frees a probe slot and is

@@ -7,7 +7,14 @@
 ## A `CircuitBreaker` must outlive the permits it grants, so in multi-threaded
 ## code keep it in a global or another long-lived owner.
 
-import std/[times, monotimes, atomics, random, math]
+import std/[times, monotimes, random, math]
+when defined(nimlinearIntercept):
+  # Test builds only (tests/t_linearizable_sched): every atomic write and lock
+  # acquire becomes a switch point of nimlinear's scheduler. Never set in
+  # production, so the package does not depend on nim-linear.
+  import nimlinear/intercept
+else:
+  import std/atomics
 import types, private/[window, latency, sync]
 
 export types
